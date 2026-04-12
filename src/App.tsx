@@ -262,7 +262,7 @@ export default function App() {
                 <div className="mb-6 relative inline-block">
                   <div className="absolute inset-0 bg-brand-primary blur-3xl opacity-20 animate-pulse" />
                 </div>
-                <h2 className="text-4xl font-display font-bold mb-4">Ready to get inked?</h2>
+                <h2 className="text-4xl font-display font-bold mb-4">FACETIME WITH AI</h2>
                 <p className="text-zinc-400 mb-8 leading-relaxed">
                   BaDDDiie is the greatest tattoo consultant in real-time. 
                   Coming to a Hood <span className="line-through opacity-50">server</span> near you. 
