@@ -1,0 +1,5 @@
+{
+  "name": "BaDDDiie: The Tattoo Consultant",
+  "description": "The greatest tattoo consultant in real-time. Get expert advice on your next ink from BaDDDiie, the consultant that lives in your pocket.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
