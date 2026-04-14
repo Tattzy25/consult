@@ -132,7 +132,7 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(75, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 1000);
-    camera.position.z = 2;
+    camera.position.z = 3.5;
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -201,5 +201,5 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     };
   }, []);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return <div ref={containerRef} className="w-full h-full pointer-events-auto" />;
 };
