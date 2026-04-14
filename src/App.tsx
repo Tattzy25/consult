@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Mic, MicOff, Video, VideoOff, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
@@ -10,7 +10,6 @@ You are a helpful assistant with vision, spund and voice capbilities.
 `;
 
 export default function App() {
-  const [selectedVoice, setSelectedVoice] = useState('Aoede');
   const stageRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -27,71 +26,51 @@ export default function App() {
     toggleVideo
   } = useGeminiLive(SYSTEM_INSTRUCTION);
 
-  const handleStartConnection = () => {
-    startConnection(selectedVoice);
-  };
-
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden selection:bg-brand-primary/30">
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden">
         {/* Stage Area */}
         <div ref={stageRef} className="flex-1 relative bg-black flex items-center justify-center roast-gradient">
+          {/* Always mounted WreckShader */}
+          <div className="absolute inset-0 pointer-events-none z-0">
+            <WreckShader 
+              audioLevel={isAudioPlaying ? 0.8 : 0.0} 
+              isAudioPlaying={isAudioPlaying}
+            />
+          </div>
+
+
           <AnimatePresence mode="wait">
             {!isConnected ? (
               <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="text-center max-w-md p-8"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-10 flex flex-col justify-between items-center py-16 pointer-events-none"
               >
-                <div className="mb-6 relative inline-block">
-                  <div className="absolute inset-0 bg-brand-primary blur-3xl opacity-20 animate-pulse" />
-                </div>
-                <h2 className="text-4xl font-display font-bold mb-4">FACETIME WITH AI</h2>
-                <p className="text-zinc-400 mb-8 leading-relaxed">
-                  BaDDDiie is the greatest tattoo consultant in real-time. 
-                  Coming to a Hood <span className="line-through opacity-50">server</span> near you. 
-                  The consultant that lives in your pocket.
-                </p>
-                
-                <div className="mb-8">
-                  <p className="text-sm text-zinc-500 mb-3 uppercase tracking-wider font-bold">Select Voice</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {['Aoede', 'Charon', 'Fenrir', 'Kore'].map((voice) => (
-                      <button
-                        key={voice}
-                        onClick={() => setSelectedVoice(voice)}
-                        className={cn(
-                          "py-3 rounded-xl font-bold transition-all border",
-                          selectedVoice === voice 
-                            ? "bg-brand-primary/20 border-brand-primary text-brand-primary" 
-                            : "bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                        )}
-                      >
-                        {voice}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {/* Header at the top */}
+                <h2 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-white drop-shadow-2xl">
+                  FACETIME WITH AI
+                </h2>
 
-                <button 
-                  onClick={handleStartConnection}
-                  disabled={status === 'connecting'}
-                  className={cn(
-                    "w-full py-4 bg-brand-primary text-white rounded-xl font-bold text-lg transition-transform shadow-xl shadow-brand-primary/20",
-                    status === 'connecting' ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.02] active:scale-[0.98]"
-                  )}
-                >
-                  {status === 'connecting' ? 'Connecting...' : 'Start the Show'}
-                </button>
+                {/* Call Button at the bottom */}
+                <div className="pointer-events-auto">
+                  <button 
+                    onClick={() => startConnection('Aoede')}
+                    disabled={status === 'connecting'}
+                    className={cn(
+                      "group relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300",
+                      "bg-zinc-100 hover:bg-white text-black shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:shadow-[0_0_60px_rgba(255,255,255,0.4)]",
+                      status === 'connecting' ? "opacity-50 cursor-not-allowed scale-95" : "hover:scale-105 active:scale-95"
+                    )}
+                  >
+                    <div className={cn("absolute inset-0 rounded-full border-2 border-white/20 scale-150 opacity-0 transition-all duration-700", status === 'connecting' && "animate-ping opacity-100")} />
+                    <Phone className={cn("w-8 h-8", status === 'connecting' && "animate-pulse")} fill="currentColor" />
+                  </button>
+                </div>
               </motion.div>
             ) : (
               <>
-                {/* Comedian Visualizer (The Blob) */}
-                <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-                  <WreckShader audioLevel={isAudioPlaying ? 0.8 : 0.0} isAudioPlaying={isAudioPlaying} />
-                </div>
-
                 {/* User Camera Preview */}
                 <motion.div 
                   drag

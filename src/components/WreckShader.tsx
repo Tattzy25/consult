@@ -183,6 +183,8 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
       const width = containerRef.current.clientWidth;
       const height = containerRef.current.clientHeight;
       
+      if (width === 0 || height === 0) return;
+
       cameraRef.current.aspect = width / height;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(width, height);
