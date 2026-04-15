@@ -1,10 +1,11 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, SwitchCamera } from 'lucide-react';
+import { Mic, MicOff, SwitchCamera, Phone, ImagePlus, Video, VideoOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
+import { Dock, type DockItem } from './components/unlumen-ui/dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
 const SYSTEM_INSTRUCTION = `
@@ -28,8 +29,56 @@ export default function App() {
     startConnection,
     disconnect,
     toggleMute,
-    flipCamera
+    flipCamera,
+    sendImage,
+    isVideoEnabled,
+    toggleVideo
   } = useGeminiLive(SYSTEM_INSTRUCTION);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64Data = result.split(',')[1];
+        if (base64Data) {
+          sendImage(base64Data);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const dockItems: DockItem[] = [
+    {
+      icon: isMuted ? <MicOff className="text-red-500" /> : <Mic />,
+      label: isMuted ? "Unmute" : "Mute",
+      onClick: toggleMute,
+    },
+    {
+      icon: !isVideoEnabled ? <VideoOff className="text-red-500" /> : <Video />,
+      label: !isVideoEnabled ? "Start Video" : "Stop Video",
+      onClick: toggleVideo,
+    },
+    {
+      icon: <Phone className="text-red-500 fill-current rotate-[135deg]" />,
+      label: "End Call",
+      onClick: disconnect,
+    },
+    {
+      icon: <ImagePlus />,
+      label: "Upload Image",
+      onClick: () => fileInputRef.current?.click(),
+    },
+    {
+      icon: <SwitchCamera />,
+      label: "Flip Camera",
+      onClick: flipCamera,
+    },
+  ];
 
   React.useEffect(() => {
     if (status === "connecting") {
@@ -50,6 +99,12 @@ export default function App() {
     : isUserTalking 
       ? 0.12 + (micVolume * 0.4) 
       : 0.12;
+
+  const getStatusText = () => {
+    if (visualMode === 'speaking') return "Shut UP TaTTTy is Speaking...";
+    if (visualMode === 'listening') return "TaTTTy Can Hear you ..";
+    return "Chilling...";
+  };
 
   return (
     <div className="h-[100dvh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden touch-manipulation selection:bg-brand-primary/30">
@@ -103,45 +158,33 @@ export default function App() {
                   stageRef={stageRef}
                 />
 
-                {/* Controls */}
-                <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 sm:gap-4 px-4 py-3 md:px-6 md:py-4 bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-zinc-800 shadow-2xl z-50 pointer-events-auto w-[90%] max-w-sm sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={toggleMute}
-                    className={cn(
-                      "p-3 md:p-4 rounded-xl transition-all",
-                      isMuted
-                        ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
-                        : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700",
-                    )}
+                {/* Status Text & Controls */}
+                <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-4">
+                  <motion.div 
+                    key={visualMode}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap"
                   >
-                    {isMuted ? <MicOff className="w-5 h-5 md:w-6 md:h-6" /> : <Mic className="w-5 h-5 md:w-6 md:h-6" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    className="px-6 py-3 md:px-8 md:py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 text-sm md:text-base whitespace-nowrap"
-                  >
-                    End Call
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={flipCamera}
-                    className={cn(
-                      "p-3 md:p-4 rounded-xl transition-all",
-                      "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
-                    )}
-                  >
-                    <SwitchCamera className="w-5 h-5 md:w-6 md:h-6" />
-                  </button>
+                    {getStatusText()}
+                  </motion.div>
+                  <Dock items={dockItems} iconSize={48} magnification={1.5} />
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Hidden file input for image uploads */}
+      <input
+        type="file"
+        accept="image/*"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        className="hidden"
+      />
 
       {/* Hidden canvas for video capture */}
       <canvas ref={canvasRef} width={1280} height={720} className="hidden" />

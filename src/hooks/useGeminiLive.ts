@@ -28,6 +28,7 @@ function base64ToPCM16(base64: string): Int16Array {
 export function useGeminiLive(systemInstruction: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
@@ -38,6 +39,7 @@ export function useGeminiLive(systemInstruction: string) {
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
 
   const isMutedRef = useRef(false);
+  const isVideoEnabledRef = useRef(true);
   const cameraFacingRef = useRef<"user" | "environment">("user");
   const isSessionOpenRef = useRef(false);
 
@@ -469,6 +471,27 @@ export function useGeminiLive(systemInstruction: string) {
     });
   }, []);
 
+  const toggleVideo = useCallback(() => {
+    setIsVideoEnabled((prev) => {
+      const next = !prev;
+      isVideoEnabledRef.current = next;
+      if (streamRef.current) {
+        streamRef.current.getVideoTracks().forEach((track) => {
+          track.enabled = next;
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const sendImage = useCallback((base64Data: string) => {
+    if (sessionRef.current) {
+      sessionRef.current.sendRealtimeInput({
+        video: { data: base64Data, mimeType: "image/jpeg" },
+      });
+    }
+  }, []);
+
   return {
     isConnected,
     isMuted,
@@ -483,6 +506,9 @@ export function useGeminiLive(systemInstruction: string) {
     startConnection,
     disconnect,
     toggleMute,
+    toggleVideo,
     flipCamera,
+    sendImage,
+    isVideoEnabled,
   };
 }
