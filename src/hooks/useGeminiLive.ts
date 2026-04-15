@@ -37,6 +37,7 @@ export function useGeminiLive(systemInstruction: string) {
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
+  const isSessionOpenRef = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -219,7 +220,7 @@ export function useGeminiLive(systemInstruction: string) {
     silentGain.connect(inputCtx.destination);
 
     inputNode.port.onmessage = (event) => {
-      if (isMutedRef.current || !sessionRef.current) return;
+      if (isMutedRef.current || !sessionRef.current || !isSessionOpenRef.current) return;
       const pcm = new Int16Array(event.data);
       const base64Data = pcm16ToBase64(pcm);
 
@@ -235,10 +236,16 @@ export function useGeminiLive(systemInstruction: string) {
       if (
         !isVideoEnabledRef.current ||
         !sessionRef.current ||
+        !isSessionOpenRef.current ||
         !videoRef.current ||
         !canvasRef.current
       )
         return;
+
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch((err) => console.error("Video play error:", err));
+      }
 
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
@@ -303,6 +310,7 @@ export function useGeminiLive(systemInstruction: string) {
           },
           callbacks: {
             onopen: async () => {
+              isSessionOpenRef.current = true;
               setIsConnected(true);
               setStatus("live");
               resetPlayback();
@@ -327,6 +335,7 @@ export function useGeminiLive(systemInstruction: string) {
               }
             },
             onclose: () => {
+              isSessionOpenRef.current = false;
               cleanupMedia();
               resetPlayback();
               sessionRef.current = null;
@@ -335,6 +344,7 @@ export function useGeminiLive(systemInstruction: string) {
             },
             onerror: (error) => {
               console.error("Live API Error:", error);
+              isSessionOpenRef.current = false;
               cleanupMedia();
               resetPlayback();
               sessionRef.current = null;
@@ -347,6 +357,7 @@ export function useGeminiLive(systemInstruction: string) {
         sessionRef.current = session;
       } catch (err) {
         console.error("Failed to connect:", err);
+        isSessionOpenRef.current = false;
         cleanupMedia();
         resetPlayback();
         sessionRef.current = null;

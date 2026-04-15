@@ -3,7 +3,8 @@ import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
-import { PhoneCallIcon } from './components/ui/phone-call';
+import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
+import { CameraPreview } from './components/video/CameraPreview';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
 const SYSTEM_INSTRUCTION = `
@@ -12,6 +13,7 @@ You are a helpful assistant with vision, spund and voice capbilities.
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
+  const phoneIconRef = useRef<PhoneCallIconHandle>(null);
 
   const {
     isConnected,
@@ -26,6 +28,14 @@ export default function App() {
     toggleMute,
     toggleVideo
   } = useGeminiLive(SYSTEM_INSTRUCTION);
+
+  React.useEffect(() => {
+    if (status === "connecting") {
+      phoneIconRef.current?.startAnimation();
+    } else {
+      phoneIconRef.current?.stopAnimation();
+    }
+  }, [status]);
 
   return (
     <div className="h-[100dvh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden touch-manipulation selection:bg-brand-primary/30">
@@ -58,57 +68,26 @@ export default function App() {
                   onClick={() => startConnection("Aoede")}
                   disabled={status === "connecting"}
                   className={cn(
-                    "relative flex items-center justify-center w-20 h-20 md:w-20 md:h-20 rounded-full",
-                    "bg-zinc-100 hover:bg-white text-black",
-                    "shadow-[0_0_40px_rgba(255,255,255,0.2)]",
+                    "relative flex items-center justify-center p-4 text-white",
                     "active:scale-95 transition-all duration-300 touch-manipulation",
-                    status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-105"
+                    status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-110 hover:text-zinc-300"
                   )}
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
-                  <div
-                    className={cn(
-                      "absolute inset-0 rounded-full border-2 border-white/20 scale-150 opacity-0 transition-all duration-700",
-                      status === "connecting" && "animate-ping opacity-100"
-                    )}
-                  />
                   <PhoneCallIcon
-                    className={cn(
-                      "w-8 h-8",
-                      status === "connecting" && "animate-pulse"
-                    )}
+                    ref={phoneIconRef}
+                    className="w-12 h-12 md:w-16 md:h-16"
                   />
                 </button>
               </motion.div>
             ) : (
               <motion.div key="connected-screen" className="absolute inset-0 z-10 pointer-events-none">
                 {/* User Camera Preview */}
-                <motion.div
-                  drag
-                  dragConstraints={stageRef}
-                  dragElastic={0.1}
-                  dragMomentum={false}
-                  className="absolute top-4 right-4 md:top-auto md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-40 cursor-move touch-none pointer-events-auto"
-                >
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className={cn(
-                      "w-full h-full object-cover pointer-events-none -scale-x-100",
-                      !isVideoEnabled && "hidden",
-                    )}
-                  />
-                  {!isVideoEnabled && (
-                    <div className="w-full h-full flex items-center justify-center bg-zinc-900 pointer-events-none">
-                      <VideoOff className="text-zinc-700" />
-                    </div>
-                  )}
-                  <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold uppercase pointer-events-none">
-                    You
-                  </div>
-                </motion.div>
+                <CameraPreview
+                  videoRef={videoRef}
+                  isVideoEnabled={isVideoEnabled}
+                  stageRef={stageRef}
+                />
 
                 {/* Controls */}
                 <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 sm:gap-4 px-4 py-3 md:px-6 md:py-4 bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-zinc-800 shadow-2xl z-50 pointer-events-auto w-[90%] max-w-sm sm:w-auto">
