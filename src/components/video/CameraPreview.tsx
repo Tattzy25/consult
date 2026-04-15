@@ -20,7 +20,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({
       dragConstraints={stageRef}
       dragElastic={0.1}
       dragMomentum={false}
-      className="absolute top-4 right-4 md:top-auto md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-40 cursor-move touch-none pointer-events-auto"
+      className="absolute bottom-28 right-4 md:top-auto md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-50 cursor-move touch-none pointer-events-auto"
     >
       <video
         ref={videoRef}
