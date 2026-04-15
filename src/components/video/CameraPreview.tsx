@@ -1,17 +1,16 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { VideoOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CameraPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
-  isVideoEnabled: boolean;
+  cameraFacing: 'user' | 'environment';
   stageRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const CameraPreview: React.FC<CameraPreviewProps> = ({
   videoRef,
-  isVideoEnabled,
+  cameraFacing,
   stageRef,
 }) => {
   return (
@@ -28,18 +27,10 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({
         muted
         playsInline
         className={cn(
-          "w-full h-full object-cover pointer-events-none -scale-x-100",
-          !isVideoEnabled && "hidden"
+          "w-full h-full object-cover pointer-events-none",
+          cameraFacing === "user" && "-scale-x-100"
         )}
       />
-      {!isVideoEnabled && (
-        <div className="w-full h-full flex items-center justify-center bg-zinc-900 pointer-events-none">
-          <VideoOff className="text-zinc-700" />
-        </div>
-      )}
-      <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold uppercase pointer-events-none">
-        You
-      </div>
     </motion.div>
   );
 };

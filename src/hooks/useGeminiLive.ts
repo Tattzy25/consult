@@ -28,7 +28,7 @@ function base64ToPCM16(base64: string): Int16Array {
 export function useGeminiLive(systemInstruction: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
   const [isUserTalking, setIsUserTalking] = useState(false);
@@ -38,7 +38,7 @@ export function useGeminiLive(systemInstruction: string) {
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
 
   const isMutedRef = useRef(false);
-  const isVideoEnabledRef = useRef(true);
+  const cameraFacingRef = useRef<"user" | "environment">("user");
   const isSessionOpenRef = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -201,6 +201,7 @@ export function useGeminiLive(systemInstruction: string) {
         autoGainControl: true,
       },
       video: {
+        facingMode: cameraFacingRef.current,
         width: { ideal: 1280 },
         height: { ideal: 720 },
         frameRate: { ideal: 24, max: 30 },
@@ -287,7 +288,6 @@ export function useGeminiLive(systemInstruction: string) {
 
     const captureFrame = () => {
       if (
-        !isVideoEnabledRef.current ||
         !sessionRef.current ||
         !isSessionOpenRef.current ||
         !videoRef.current ||
@@ -297,12 +297,13 @@ export function useGeminiLive(systemInstruction: string) {
 
       if (videoRef.current.srcObject !== streamRef.current) {
         videoRef.current.srcObject = streamRef.current;
-        videoRef.current.play().catch((err) => console.error("Video play error:", err));
+        videoRef.current.play().catch((err) => {
+          console.error("🚨 INITIAL VIDEO PLAY FAILED:", err);
+        });
       }
 
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      const ctx = canvas.getContext("2d")!;
 
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const base64Data = canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
@@ -316,6 +317,38 @@ export function useGeminiLive(systemInstruction: string) {
       captureFrame,
       VIDEO_INTERVAL_MS,
     );
+  }, []);
+
+  const flipCamera = useCallback(async () => {
+    try {
+      const nextFacing = cameraFacingRef.current === "user" ? "environment" : "user";
+      cameraFacingRef.current = nextFacing;
+      setCameraFacing(nextFacing);
+
+      streamRef.current!.getVideoTracks().forEach((track) => {
+        track.stop();
+        streamRef.current!.removeTrack(track);
+      });
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: nextFacing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24, max: 30 },
+        },
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      streamRef.current!.addTrack(newVideoTrack);
+
+      videoRef.current!.srcObject = streamRef.current;
+      videoRef.current!.play().catch((err) => {
+        console.error("🚨 VIDEO PLAY FAILED AFTER FLIP:", err);
+      });
+    } catch (err) {
+      console.error("🚨 CAMERA FLIP FAILED:", err);
+    }
   }, []);
 
   const disconnect = useCallback(() => {
@@ -436,23 +469,10 @@ export function useGeminiLive(systemInstruction: string) {
     });
   }, []);
 
-  const toggleVideo = useCallback(() => {
-    setIsVideoEnabled((prev) => {
-      const next = !prev;
-      isVideoEnabledRef.current = next;
-      if (streamRef.current) {
-        streamRef.current.getVideoTracks().forEach((track) => {
-          track.enabled = next;
-        });
-      }
-      return next;
-    });
-  }, []);
-
   return {
     isConnected,
     isMuted,
-    isVideoEnabled,
+    cameraFacing,
     isAudioPlaying,
     micVolume,
     isUserTalking,
@@ -463,6 +483,6 @@ export function useGeminiLive(systemInstruction: string) {
     startConnection,
     disconnect,
     toggleMute,
-    toggleVideo,
+    flipCamera,
   };
 }

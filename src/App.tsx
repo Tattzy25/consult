@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { Mic, MicOff, SwitchCamera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
@@ -18,7 +18,7 @@ export default function App() {
   const {
     isConnected,
     isMuted,
-    isVideoEnabled,
+    cameraFacing,
     isAudioPlaying,
     micVolume,
     isUserTalking,
@@ -28,7 +28,7 @@ export default function App() {
     startConnection,
     disconnect,
     toggleMute,
-    toggleVideo
+    flipCamera
   } = useGeminiLive(SYSTEM_INSTRUCTION);
 
   React.useEffect(() => {
@@ -99,7 +99,7 @@ export default function App() {
                 {/* User Camera Preview */}
                 <CameraPreview
                   videoRef={videoRef}
-                  isVideoEnabled={isVideoEnabled}
+                  cameraFacing={cameraFacing}
                   stageRef={stageRef}
                 />
 
@@ -128,19 +128,13 @@ export default function App() {
 
                   <button
                     type="button"
-                    onClick={toggleVideo}
+                    onClick={flipCamera}
                     className={cn(
                       "p-3 md:p-4 rounded-xl transition-all",
-                      !isVideoEnabled
-                        ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
-                        : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700",
+                      "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
                     )}
                   >
-                    {!isVideoEnabled ? (
-                      <VideoOff className="w-5 h-5 md:w-6 md:h-6" />
-                    ) : (
-                      <Video className="w-5 h-5 md:w-6 md:h-6" />
-                    )}
+                    <SwitchCamera className="w-5 h-5 md:w-6 md:h-6" />
                   </button>
                 </div>
               </motion.div>
