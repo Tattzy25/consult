@@ -20,6 +20,8 @@ export default function App() {
     isMuted,
     isVideoEnabled,
     isAudioPlaying,
+    micVolume,
+    isUserTalking,
     status,
     videoRef,
     canvasRef,
@@ -37,6 +39,18 @@ export default function App() {
     }
   }, [status]);
 
+  const visualMode: 'idle' | 'listening' | 'speaking' = isAudioPlaying 
+    ? 'speaking' 
+    : isUserTalking 
+      ? 'listening' 
+      : 'idle';
+
+  const audioLevel = isAudioPlaying 
+    ? 0.85 
+    : isUserTalking 
+      ? 0.12 + (micVolume * 0.4) 
+      : 0.12;
+
   return (
     <div className="h-[100dvh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden touch-manipulation selection:bg-brand-primary/30">
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
@@ -48,8 +62,8 @@ export default function App() {
           {/* Always mounted WreckShader */}
           <div className="absolute inset-0 pointer-events-none z-0">
             <WreckShader
-              audioLevel={isAudioPlaying ? 0.85 : 0.12}
-              isAudioPlaying={isAudioPlaying}
+              audioLevel={audioLevel}
+              visualMode={visualMode}
             />
           </div>
 

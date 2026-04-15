@@ -30,6 +30,8 @@ export function useGeminiLive(systemInstruction: string) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [micVolume, setMicVolume] = useState(0);
+  const [isUserTalking, setIsUserTalking] = useState(false);
   const [status, setStatus] = useState<
     "idle" | "connecting" | "live" | "error"
   >("idle");
@@ -49,6 +51,8 @@ export function useGeminiLive(systemInstruction: string) {
   const outputNodeRef = useRef<AudioWorkletNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<any>(null);
@@ -59,6 +63,11 @@ export function useGeminiLive(systemInstruction: string) {
   const playbackPrimedRef = useRef(false);
 
   const cleanupMedia = useCallback(() => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
     if (videoIntervalRef.current) {
       window.clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
@@ -75,6 +84,11 @@ export function useGeminiLive(systemInstruction: string) {
       outputNodeRef.current = null;
     }
 
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+
     if (audioSourceRef.current) {
       audioSourceRef.current.disconnect();
       audioSourceRef.current = null;
@@ -89,6 +103,9 @@ export function useGeminiLive(systemInstruction: string) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+
+    setMicVolume(0);
+    setIsUserTalking(false);
   }, []);
 
   const resetPlayback = useCallback(() => {
@@ -198,6 +215,42 @@ export function useGeminiLive(systemInstruction: string) {
 
     const inputCtx = inputCtxRef.current!;
     const source = inputCtx.createMediaStreamSource(stream);
+    
+    // Setup AnalyserNode for mic volume
+    const analyser = inputCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    const updateVolume = () => {
+      if (!analyserRef.current) return;
+      analyserRef.current.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      const avg = sum / dataArray.length;
+      const volume = Math.min(1, avg / 128);
+
+      setMicVolume((prev) => {
+        if (volume === 0 && prev === 0) return prev;
+        if (Math.abs(prev - volume) < 0.02) return prev;
+        return volume;
+      });
+
+      setIsUserTalking((prev) => {
+        const isTalking = volume > 0.05;
+        if (prev !== isTalking) return isTalking;
+        return prev;
+      });
+
+      rafIdRef.current = requestAnimationFrame(updateVolume);
+    };
+
+    updateVolume();
+
     const inputNode = new AudioWorkletNode(inputCtx, "gemini-input-worklet", {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -401,6 +454,8 @@ export function useGeminiLive(systemInstruction: string) {
     isMuted,
     isVideoEnabled,
     isAudioPlaying,
+    micVolume,
+    isUserTalking,
     transcript,
     status,
     videoRef,

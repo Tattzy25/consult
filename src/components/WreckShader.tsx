@@ -1,18 +1,23 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 
 interface WreckShaderProps {
   audioLevel: number;
-  isAudioPlaying: boolean;
+  visualMode: 'idle' | 'listening' | 'speaking';
 }
 
-export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPlaying }) => {
+export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioLevelRef = useRef(audioLevel);
+  const visualModeRef = useRef(visualMode);
 
   useEffect(() => {
     audioLevelRef.current = audioLevel;
   }, [audioLevel]);
+
+  useEffect(() => {
+    visualModeRef.current = visualMode;
+  }, [visualMode]);
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -27,6 +32,8 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     varying float vDisplacement;
     uniform float uTime;
     uniform float uAudioLevel;
+    uniform float uListening;
+    uniform float uSpeaking;
 
     // Simplex 3D Noise
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -85,7 +92,10 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
       vUv = uv;
       vNormal = normalize(normalMatrix * normal);
       
-      float noise = snoise(position * 1.5 + uTime * 0.4);
+      float noiseFreq = 1.5 + uListening * 0.5;
+      float timeSpeed = 0.4 + uSpeaking * 0.2 + uListening * 0.1;
+      
+      float noise = snoise(position * noiseFreq + uTime * timeSpeed);
       vDisplacement = noise * (0.15 + uAudioLevel * 0.6);
       
       vec3 newPosition = position + normal * vDisplacement;
@@ -103,6 +113,8 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     varying float vDisplacement;
     uniform float uTime;
     uniform float uAudioLevel;
+    uniform float uListening;
+    uniform float uSpeaking;
 
     void main() {
       vec3 normal = normalize(vNormal);
@@ -113,17 +125,30 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
       
       // Chrome colors (Black to White/Silver)
       vec3 baseColor = vec3(0.05);
-      vec3 reflectionColor = vec3(0.9, 0.9, 1.0);
+      vec3 silverColor = vec3(0.9, 0.9, 1.0);
+      vec3 cyanColor = vec3(0.4, 0.8, 1.0);
+      vec3 goldColor = vec3(1.0, 0.9, 0.7);
       
       // Add some "liquid" movement to the color
       float spec = pow(clamp(dot(reflect(-viewDir, normal), vec3(0.0, 1.0, 0.0)), 0.0001, 1.0), 32.0);
       
-      vec3 finalColor = mix(baseColor, reflectionColor, fresnel + spec);
+      vec3 idleColor = mix(baseColor, silverColor, fresnel + spec);
+      vec3 listeningColor = mix(baseColor, cyanColor, fresnel + spec);
+      vec3 speakingColor = mix(baseColor, goldColor, fresnel + spec);
+      
+      vec3 finalColor = mix(idleColor, listeningColor, uListening);
+      finalColor = mix(finalColor, speakingColor, uSpeaking);
       
       // Add subtle iridescent shift based on displacement
       finalColor += vec3(0.1, 0.1, 0.2) * vDisplacement;
+      if (uListening > 0.0) {
+        finalColor += vec3(0.0, 0.2, 0.4) * vDisplacement * uListening;
+      }
+      if (uSpeaking > 0.0) {
+        finalColor += vec3(0.2, 0.1, 0.0) * vDisplacement * uSpeaking;
+      }
       
-      // Boost brightness when audio is playing
+      // Boost brightness slightly based on audio level
       finalColor *= (1.0 + uAudioLevel * 0.5);
       
       gl_FragColor = vec4(finalColor, 1.0);
@@ -162,6 +187,8 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
       uniforms: {
         uTime: { value: 0 },
         uAudioLevel: { value: 0 },
+        uListening: { value: 0 },
+        uSpeaking: { value: 0 },
       },
       wireframe: true,
       transparent: true,
@@ -177,6 +204,13 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
         materialRef.current.uniforms.uTime.value = time * 0.001;
         // Smooth transition for audio level
         materialRef.current.uniforms.uAudioLevel.value += (audioLevelRef.current - materialRef.current.uniforms.uAudioLevel.value) * 0.2;
+        
+        const targetListening = visualModeRef.current === 'listening' ? 1.0 : 0.0;
+        const targetSpeaking = visualModeRef.current === 'speaking' ? 1.0 : 0.0;
+        
+        // Smooth transition for visual modes
+        materialRef.current.uniforms.uListening.value += (targetListening - materialRef.current.uniforms.uListening.value) * 0.1;
+        materialRef.current.uniforms.uSpeaking.value += (targetSpeaking - materialRef.current.uniforms.uSpeaking.value) * 0.1;
       }
       
       if (sphere) {
@@ -193,15 +227,15 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     // Resize handler
     const resizeObserver = new ResizeObserver(() => {
       if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
       
-      if (width === 0 || height === 0) return;
+      if (w === 0 || h === 0) return;
 
-      cameraRef.current.aspect = width / height;
+      cameraRef.current.aspect = w / h;
       cameraRef.current.position.z = window.innerWidth < 768 ? 3.75 : 3.45;
       cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(width, height);
+      rendererRef.current.setSize(w, h);
     });
     
     resizeObserver.observe(containerRef.current);
