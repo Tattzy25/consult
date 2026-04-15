@@ -267,7 +267,9 @@ export function useGeminiLive(systemInstruction: string) {
     if (session) {
       try {
         session.close();
-      } catch {}
+      } catch (err) {
+        console.error("Error closing session:", err);
+      }
     }
 
     setIsConnected(false);
@@ -280,6 +282,9 @@ export function useGeminiLive(systemInstruction: string) {
       try {
         setStatus("connecting");
         await initAudio();
+        
+        // Request media BEFORE connection to ensure mobile browsers don't block it
+        await startStreaming();
 
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -301,7 +306,6 @@ export function useGeminiLive(systemInstruction: string) {
               setIsConnected(true);
               setStatus("live");
               resetPlayback();
-              await startStreaming();
             },
             onmessage: (message: LiveServerMessage) => {
               if (message.serverContent?.interrupted) {

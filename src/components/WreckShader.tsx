@@ -137,14 +137,19 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, isAudioPla
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const initialWidth = containerRef.current.clientWidth || window.innerWidth;
-    const initialHeight = containerRef.current.clientHeight || window.innerHeight;
-    const camera = new THREE.PerspectiveCamera(75, initialWidth / initialHeight, 0.1, 1000);
+    const width = containerRef.current.clientWidth;
+    const height = containerRef.current.clientHeight;
+    // Safely calculate aspect ratio to prevent NaN on initial layout
+    const aspect = width > 0 && height > 0 ? width / height : 1;
+
+    const camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
     camera.position.z = window.innerWidth < 768 ? 3.75 : 3.45;
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(initialWidth, initialHeight);
+    if (width > 0 && height > 0) {
+      renderer.setSize(width, height);
+    }
     renderer.setPixelRatio(window.devicePixelRatio);
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
