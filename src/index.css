@@ -15,8 +15,17 @@
   --color-brand-secondary: #a1a1aa;
 }
 
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 body {
   @apply bg-black text-zinc-100 font-sans antialiased;
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 .chrome-glow {

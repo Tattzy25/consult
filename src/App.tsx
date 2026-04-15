@@ -28,8 +28,8 @@ export default function App() {
   } = useGeminiLive(SYSTEM_INSTRUCTION);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden selection:bg-brand-primary/30">
-      <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden">
+    <div className="h-[100dvh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden touch-manipulation selection:bg-brand-primary/30">
+      <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
         {/* Stage Area */}
         <div
           ref={stageRef}
@@ -46,53 +46,49 @@ export default function App() {
           <AnimatePresence mode="wait">
             {!isConnected ? (
               <motion.div
+                key="disconnected-screen"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-10 flex flex-col justify-between items-center py-16 pointer-events-none"
+                className="absolute inset-0 z-10 flex flex-col justify-end items-center p-[10px]"
               >
-                {/* Header at the top */}
-                <h2 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-white drop-shadow-2xl">
-                  FACETIME WITH AI
-                </h2>
-
                 {/* Call Button at the bottom */}
-                <div className="pointer-events-auto">
-                  <button
-                    onClick={() => startConnection("Aoede")}
-                    disabled={status === "connecting"}
+                <button
+                  type="button"
+                  onClick={() => startConnection("Aoede")}
+                  disabled={status === "connecting"}
+                  className={cn(
+                    "relative flex items-center justify-center w-20 h-20 md:w-20 md:h-20 rounded-full",
+                    "bg-zinc-100 hover:bg-white text-black",
+                    "shadow-[0_0_40px_rgba(255,255,255,0.2)]",
+                    "active:scale-95 transition-all duration-300 touch-manipulation",
+                    status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-105"
+                  )}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <div
                     className={cn(
-                      "group relative flex items-center justify-center w-20 h-20 rounded-full transition-all duration-300",
-                      "bg-zinc-100 hover:bg-white text-black shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:shadow-[0_0_60px_rgba(255,255,255,0.4)]",
-                      status === "connecting"
-                        ? "opacity-50 cursor-not-allowed scale-95"
-                        : "hover:scale-105 active:scale-95",
+                      "absolute inset-0 rounded-full border-2 border-white/20 scale-150 opacity-0 transition-all duration-700",
+                      status === "connecting" && "animate-ping opacity-100"
                     )}
-                  >
-                    <div
-                      className={cn(
-                        "absolute inset-0 rounded-full border-2 border-white/20 scale-150 opacity-0 transition-all duration-700",
-                        status === "connecting" && "animate-ping opacity-100",
-                      )}
-                    />
-                    <PhoneCallIcon
-                      className={cn(
-                        "w-8 h-8",
-                        status === "connecting" && "animate-pulse",
-                      )}
-                    />
-                  </button>
-                </div>
+                  />
+                  <PhoneCallIcon
+                    className={cn(
+                      "w-8 h-8",
+                      status === "connecting" && "animate-pulse"
+                    )}
+                  />
+                </button>
               </motion.div>
             ) : (
-              <>
+              <motion.div key="connected-screen" className="absolute inset-0 z-10 pointer-events-none">
                 {/* User Camera Preview */}
                 <motion.div
                   drag
                   dragConstraints={stageRef}
                   dragElastic={0.1}
                   dragMomentum={false}
-                  className="absolute bottom-8 right-8 w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-40 cursor-move touch-none"
+                  className="absolute top-4 right-4 md:top-auto md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-40 cursor-move touch-none pointer-events-auto"
                 >
                   <video
                     ref={videoRef}
@@ -115,43 +111,46 @@ export default function App() {
                 </motion.div>
 
                 {/* Controls */}
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-4 bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-zinc-800 shadow-2xl z-50 pointer-events-auto">
+                <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center gap-2 sm:gap-4 px-4 py-3 md:px-6 md:py-4 bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-zinc-800 shadow-2xl z-50 pointer-events-auto w-[90%] max-w-sm sm:w-auto">
                   <button
+                    type="button"
                     onClick={toggleMute}
                     className={cn(
-                      "p-4 rounded-xl transition-all",
+                      "p-3 md:p-4 rounded-xl transition-all",
                       isMuted
                         ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
                         : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700",
                     )}
                   >
-                    {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+                    {isMuted ? <MicOff className="w-5 h-5 md:w-6 md:h-6" /> : <Mic className="w-5 h-5 md:w-6 md:h-6" />}
                   </button>
 
                   <button
+                    type="button"
                     onClick={disconnect}
-                    className="px-8 py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-500/20"
+                    className="px-6 py-3 md:px-8 md:py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 text-sm md:text-base whitespace-nowrap"
                   >
                     End Call
                   </button>
 
                   <button
+                    type="button"
                     onClick={toggleVideo}
                     className={cn(
-                      "p-4 rounded-xl transition-all",
+                      "p-3 md:p-4 rounded-xl transition-all",
                       !isVideoEnabled
                         ? "bg-red-500/20 text-red-500 hover:bg-red-500/30"
                         : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700",
                     )}
                   >
                     {!isVideoEnabled ? (
-                      <VideoOff size={24} />
+                      <VideoOff className="w-5 h-5 md:w-6 md:h-6" />
                     ) : (
-                      <Video size={24} />
+                      <Video className="w-5 h-5 md:w-6 md:h-6" />
                     )}
                   </button>
                 </div>
-              </>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
