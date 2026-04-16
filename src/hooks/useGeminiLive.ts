@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
+import { mcpInjector } from "../lib/mcp-injector";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -37,7 +38,6 @@ export function useGeminiLive(systemInstruction: string) {
     "idle" | "connecting" | "live" | "error"
   >("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
-  const [displayImageUrl, setDisplayImageUrl] = useState<string | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -358,6 +358,7 @@ export function useGeminiLive(systemInstruction: string) {
   const disconnect = useCallback(() => {
     cleanupMedia();
     resetPlayback();
+    mcpInjector.disconnect();
 
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -383,6 +384,10 @@ export function useGeminiLive(systemInstruction: string) {
         // Request media BEFORE connection to ensure mobile browsers don't block it
         await startStreaming();
 
+        // Connect to MCP and get tools
+        await mcpInjector.connect();
+        const tools = mcpInjector.getGeminiTools();
+
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
         const session = await ai.live.connect({
@@ -390,6 +395,7 @@ export function useGeminiLive(systemInstruction: string) {
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction,
+            tools: tools.length > 0 ? tools : undefined,
             speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: selectedVoice },
@@ -405,7 +411,7 @@ export function useGeminiLive(systemInstruction: string) {
               setStatus("live");
               resetPlayback();
             },
-            onmessage: (message: LiveServerMessage) => {
+            onmessage: async (message: LiveServerMessage) => {
               if (message.serverContent?.interrupted) {
                 resetPlayback();
               }
@@ -422,44 +428,24 @@ export function useGeminiLive(systemInstruction: string) {
                     { role: "wreck", text: part.text! },
                   ]);
                 }
-                if (part.toolCode) {
+                if (part.functionCall) {
+                  const { name, args } = part.functionCall;
+                  if (!name) continue;
                   try {
-                    const toolCall = JSON.parse(part.toolCode);
-                    console.log("Parsed tool call:", toolCall);
-
-                    // --- REPLACE WITH YOUR ACTUAL MCP ENDPOINT AND LOGIC ---
-                    // Assuming toolCall.name is the tool to be called
-                    // And toolCall.args contains the parameters (memory, add_memory, search)
-                    const mcpEndpoint = process.env.MCP_TOOL_ENDPOINT || "http://localhost:3001/call_tool"; // Replace with your actual endpoint
-
-                    // Construct the request payload based on your MCP endpoint's requirements
-                    const response = await fetch(mcpEndpoint, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        tool_name: toolCall.name,
-                        tool_params: toolCall.args,
-                      }),
+                    const result = await mcpInjector.executeTool(name, args);
+                    sessionRef.current?.sendToolResponse({
+                      functionResponses: [{
+                        name,
+                        response: { result }
+                      }]
                     });
-
-                    if (!response.ok) {
-                      throw new Error(`MCP tool call failed: ${response.statusText}`);
-                    }
-
-                    const data = await response.json();
-
-                    // Assuming the response contains an 'imageUrl' field
-                    if (data.imageUrl) {
-                      setDisplayImageUrl(data.imageUrl);
-                    } else {
-                      console.warn("MCP tool call response did not contain an imageUrl:", data);
-                    }
-                    // --- END OF MCP ENDPOINT LOGIC ---
-
-                  } catch (e) {
-                    console.error("Error parsing toolCode or calling MCP endpoint:", e);
+                  } catch (error: any) {
+                    sessionRef.current?.sendToolResponse({
+                      functionResponses: [{
+                        name,
+                        response: { error: error.message || "Tool execution failed" }
+                      }]
+                    });
                   }
                 }
               }
@@ -552,7 +538,5 @@ export function useGeminiLive(systemInstruction: string) {
     flipCamera,
     sendImage,
     isVideoEnabled,
-    displayImageUrl, // Expose the image URL to display
-    setDisplayImageUrl, // Expose the setter to clear the image
   };
 }
