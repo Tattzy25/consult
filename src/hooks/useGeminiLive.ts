@@ -38,6 +38,7 @@ export function useGeminiLive(systemInstruction: string) {
     "idle" | "connecting" | "live" | "error"
   >("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -433,6 +434,19 @@ export function useGeminiLive(systemInstruction: string) {
                   if (!name) continue;
                   try {
                     const result = await mcpInjector.executeTool(name, args);
+                    
+                    // Check if the result contains an image URL from our tool
+                    try {
+                      if (result && typeof result.text === 'string') {
+                        const parsed = JSON.parse(result.text);
+                        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string' && parsed[0].startsWith('http')) {
+                          setGeneratedImage(parsed[0]);
+                        }
+                      }
+                    } catch (e) {
+                      // Ignore parsing errors, it might not be an image tool response
+                    }
+
                     sessionRef.current?.sendToolResponse({
                       functionResponses: [{
                         name,
@@ -538,5 +552,7 @@ export function useGeminiLive(systemInstruction: string) {
     flipCamera,
     sendImage,
     isVideoEnabled,
+    generatedImage,
+    setGeneratedImage,
   };
 }

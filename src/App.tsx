@@ -1,10 +1,11 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, SwitchCamera, Phone, ImagePlus, Video, VideoOff } from 'lucide-react';
+import { Mic, MicOff, SwitchCamera, Phone, ImagePlus, Video, VideoOff, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
+import { GeneratedImageOverlay } from './components/ui/GeneratedImageOverlay';
 
 import { Dock, type DockItem } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
@@ -33,7 +34,9 @@ export default function App() {
     flipCamera,
     sendImage,
     isVideoEnabled,
-    toggleVideo
+    toggleVideo,
+    generatedImage,
+    setGeneratedImage
   } = useGeminiLive(SYSTEM_INSTRUCTION);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +78,11 @@ export default function App() {
       label: "Flip Camera",
       onClick: flipCamera,
     },
+    {
+      icon: <PhoneOff className="text-red-500" />,
+      label: "End Call",
+      onClick: disconnect,
+    },
   ];
 
   React.useEffect(() => {
@@ -97,12 +105,6 @@ export default function App() {
       ? 0.12 + (micVolume * 0.4) 
       : 0.12;
 
-  const getStatusText = () => {
-    if (visualMode === 'speaking') return "Shut UP TaTTTy is Speaking...";
-    if (visualMode === 'listening') return "TaTTTy Can Hear you ..";
-    return "Chilling...";
-  };
-
   return (
     <div className="min-h-[100svh] bg-zinc-950 text-zinc-100 flex flex-col overflow-y-auto selection:bg-brand-primary/30">
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
@@ -118,6 +120,15 @@ export default function App() {
               visualMode={visualMode}
             />
           </div>
+
+          <AnimatePresence>
+            {generatedImage && (
+              <GeneratedImageOverlay
+                imageUrl={generatedImage}
+                onClose={() => setGeneratedImage(null)}
+              />
+            )}
+          </AnimatePresence>
 
           <AnimatePresence mode="wait">
             {!isConnected ? (
@@ -155,19 +166,8 @@ export default function App() {
                   stageRef={stageRef}
                 />
 
-                {/* Status Text - NEW POSITION */}
-                <motion.div
-                    key={visualMode}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap pointer-events-auto"
-                  >
-                    {getStatusText()}
-                  </motion.div>
-
-                {/* Horizontal Dock - NEW COMPONENT */}
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+                {/* Horizontal Dock - MOVED UP TO AVOID IOS HOME BAR */}
+                <div className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
                   <Dock items={dockItems} />
                 </div>
               </motion.div>

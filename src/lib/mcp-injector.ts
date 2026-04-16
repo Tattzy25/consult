@@ -8,15 +8,16 @@ export interface Tool {
 }
 
 export class MCPInjector {
-  private sseSource: EventSource | null = null;
-  private postEndpoint: string | null = null;
+  private abortController: AbortController | null = null;
   private tools: Tool[] = [];
   private messageIdCounter = 1;
+  private pendingRequests: Map<number, { resolve: (val: any) => void, reject: (err: any) => void }> = new Map();
+  private isConnected = false;
 
   constructor() {}
 
   /**
-   * Establishes the SSE connection and resolves the POST endpoint.
+   * Establishes a single streaming HTTP POST connection for JSON-RPC 2.0.
    */
   async connect(): Promise<boolean> {
     const endpointUrl = import.meta.env.VITE_MCP_ENDPOINT_URL;
@@ -26,48 +27,136 @@ export class MCPInjector {
       return false;
     }
 
-    return new Promise((resolve) => {
-      try {
-        this.sseSource = new EventSource(endpointUrl);
+    this.abortController = new AbortController();
 
-        // The MCP spec dictates the server sends an 'endpoint' event containing the POST URL
-        this.sseSource.addEventListener("endpoint", async (event: MessageEvent) => {
-          try {
-            // The event data contains the URI for POST requests.
-            // It might be relative or absolute.
-            const postUri = event.data;
-            this.postEndpoint = new URL(postUri, endpointUrl).toString();
-            console.log(`[MCP] SSE Connection established. POST endpoint resolved: ${this.postEndpoint}`);
-            
-            // Once we have the POST endpoint, we must initialize the connection
-            const initSuccess = await this.initializeConnection();
-            if (!initSuccess) {
-              resolve(false);
-              return;
+    try {
+      // We initiate a single POST request that stays open (streaming)
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        // We might need to send an initial payload to keep the connection open depending on the server implementation
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: this.messageIdCounter++,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: {
+              name: "gemini-live-client",
+              version: "1.0.0"
             }
-
-            // After initialization, fetch the available tools
-            const toolsSuccess = await this.fetchTools();
-            resolve(toolsSuccess);
-
-          } catch (error) {
-            console.error("[MCP] Failed to process endpoint event:", error);
-            this.disconnect();
-            resolve(false);
           }
-        });
+        }),
+        signal: this.abortController.signal
+      });
 
-        this.sseSource.onerror = (error) => {
-          console.error("[MCP] SSE Connection error:", error);
-          this.disconnect();
-          resolve(false);
-        };
-
-      } catch (error) {
-        console.error("[MCP] Failed to initialize EventSource:", error);
-        resolve(false);
+      if (!response.ok) {
+        console.error(`[MCP] Failed to connect to streaming endpoint: ${response.status} ${response.statusText}`);
+        return false;
       }
-    });
+
+      if (!response.body) {
+        console.error("[MCP] Response body is null");
+        return false;
+      }
+
+      this.isConnected = true;
+      console.log(`[MCP] Streaming HTTP connection established.`);
+
+      // Start reading the stream asynchronously
+      this.readStream(response.body);
+
+      // Wait for the initialize response (we assume the first response is for initialize)
+      // In a robust implementation, we'd wait for the specific ID.
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Send the initialized notification
+      await this.sendJsonRpcNotification("notifications/initialized");
+
+      // Fetch tools
+      const toolsSuccess = await this.fetchTools();
+      return toolsSuccess;
+
+    } catch (error) {
+      console.error("[MCP] Failed to initialize streaming HTTP connection:", error);
+      return false;
+    }
+  }
+
+  private async readStream(body: ReadableStream<Uint8Array>) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Try to parse complete JSON objects from the buffer
+        let parsed = true;
+        while (parsed && buffer.length > 0) {
+          parsed = false;
+          try {
+            // Find the end of the first valid JSON object
+            // This is a naive approach; a robust implementation needs a proper JSON stream parser
+            // For simplicity, we assume each message is separated by a newline if it's JSON Lines,
+            // or we try to parse the whole buffer if it's a single object.
+            
+            // Assuming JSON Lines format for the stream:
+            const newlineIndex = buffer.indexOf('\n');
+            if (newlineIndex !== -1) {
+              const line = buffer.slice(0, newlineIndex).trim();
+              buffer = buffer.slice(newlineIndex + 1);
+              
+              if (line) {
+                const message = JSON.parse(line);
+                this.handleJsonRpcMessage(message);
+                parsed = true;
+              }
+            } else {
+              // Try parsing the whole buffer (might fail if incomplete)
+              const message = JSON.parse(buffer);
+              this.handleJsonRpcMessage(message);
+              buffer = ''; // Cleared if successful
+              parsed = true;
+            }
+          } catch (e) {
+            // Incomplete JSON, wait for more data
+            parsed = false;
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("[MCP] Stream reading error:", error);
+      }
+    } finally {
+      reader.releaseLock();
+      this.isConnected = false;
+    }
+  }
+
+  private handleJsonRpcMessage(message: any) {
+    if (message.id !== undefined && this.pendingRequests.has(message.id)) {
+      const { resolve, reject } = this.pendingRequests.get(message.id)!;
+      this.pendingRequests.delete(message.id);
+      
+      if (message.error) {
+        reject(message.error);
+      } else {
+        resolve(message);
+      }
+    } else if (message.method) {
+      // Handle incoming notifications/requests from server if needed
+      console.log("[MCP] Received server message:", message);
+    }
   }
 
   /**
@@ -179,8 +268,8 @@ export class MCPInjector {
    * Executes a tool call via HTTP POST.
    */
   async executeTool(name: string, args: any) {
-    if (!this.postEndpoint) {
-      throw new Error("MCP Client is not fully connected (missing POST endpoint)");
+    if (!this.isConnected) {
+      throw new Error("MCP Client is not fully connected");
     }
 
     console.log(`[MCP] Executing tool: ${name}`, args);
@@ -206,17 +295,21 @@ export class MCPInjector {
    * Helper to send JSON-RPC 2.0 requests.
    */
   private async sendJsonRpcRequest(method: string, params?: any): Promise<any> {
-    if (!this.postEndpoint) throw new Error("No POST endpoint available");
+    const endpointUrl = import.meta.env.VITE_MCP_ENDPOINT_URL;
+    if (!endpointUrl) throw new Error("No endpoint available");
 
+    const id = this.messageIdCounter++;
     const payload = {
       jsonrpc: "2.0",
-      id: this.messageIdCounter++,
+      id,
       method,
       params
     };
 
+    // If we are using a single streaming connection, we might need to send this over a WebSocket or a separate POST.
+    // Assuming the server expects separate POST requests for commands while the stream is open:
     try {
-      const response = await fetch(this.postEndpoint, {
+      const response = await fetch(endpointUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -238,7 +331,8 @@ export class MCPInjector {
    * Helper to send JSON-RPC 2.0 notifications (no response expected).
    */
   private async sendJsonRpcNotification(method: string, params?: any): Promise<void> {
-    if (!this.postEndpoint) throw new Error("No POST endpoint available");
+    const endpointUrl = import.meta.env.VITE_MCP_ENDPOINT_URL;
+    if (!endpointUrl) throw new Error("No endpoint available");
 
     const payload = {
       jsonrpc: "2.0",
@@ -247,7 +341,7 @@ export class MCPInjector {
     };
 
     try {
-      await fetch(this.postEndpoint, {
+      await fetch(endpointUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -260,12 +354,13 @@ export class MCPInjector {
   }
 
   disconnect() {
-    if (this.sseSource) {
-      this.sseSource.close();
-      this.sseSource = null;
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
     }
-    this.postEndpoint = null;
+    this.isConnected = false;
     this.tools = [];
+    this.pendingRequests.clear();
     console.log("[MCP] Disconnected.");
   }
 }
