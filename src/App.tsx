@@ -64,11 +64,7 @@ export default function App() {
       label: !isVideoEnabled ? "Start Video" : "Stop Video",
       onClick: toggleVideo,
     },
-    {
-      icon: <PhoneCallIcon className="text-red-500 rotate-[135deg]" />,
-      label: "End Call",
-      onClick: disconnect,
-    },
+
     {
       icon: <ImagePlus />,
       label: "Upload Image",
@@ -158,17 +154,6 @@ export default function App() {
                   cameraFacing={cameraFacing}
                   stageRef={stageRef}
                 />
-
-                {/* Status Text - NEW POSITION */}
-                <motion.div
-                    key={visualMode}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap pointer-events-auto"
-                  >
-                    {getStatusText()}
-                  </motion.div>
 
                 {/* Vertical Dock - NEW COMPONENT */}
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 z-50 pointer-events-auto">

@@ -70,7 +70,6 @@ const StyledWrapper = styled.div`
   }
 
   .button {
-    position: absolute;
     display: grid;
     place-items: center;
     padding: 10px;
@@ -90,13 +89,10 @@ const StyledWrapper = styled.div`
   .buttons:hover .functional-button-1 { /* Video/VideoOff */
     translate: 0px -140px;
   }
-  .buttons:hover .functional-button-2 { /* End Call */
-    translate: 0px -210px;
-  }
-  .buttons:hover .functional-button-3 { /* Upload Image */
+  .buttons:hover .functional-button-2 { /* Upload Image */
     translate: 0px 70px;
   }
-  .buttons:hover .functional-button-4 { /* Flip Camera */
+  .buttons:hover .functional-button-3 { /* Flip Camera */
     translate: 0px 140px;
   }
 
