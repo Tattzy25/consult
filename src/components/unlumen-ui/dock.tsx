@@ -201,7 +201,7 @@ export function Dock({
     <motion.div
       ref={dockRef}
       className={cn(
-        "relative flex items-end overflow-visible border border-foreground/[0.08] bg-background/80 px-2 py-2 shadow-none hover:shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] transition-shadow duration-200 backdrop-blur-xl",
+        "relative flex items-end overflow-visible border border-foreground/[0.08] bg-background/80 px-4 py-3 shadow-none hover:shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] transition-shadow duration-200 backdrop-blur-xl",
         className,
       )}
       style={{ gap, borderRadius }}
@@ -229,15 +229,15 @@ export function Dock({
       {!alwaysShowLabels && (
         <AnimatePresence>
           {hoveredIndex !== null && (
-            <motion.div
-              key="dock-tooltip"
-              layoutId="dock-tooltip"
-              className="pointer-events-none absolute flex flex-col items-center z-50"
-              style={{
-                left: tooltipX,
-                bottom: tooltipBottomOffset + 8,
-                x: "-50%",
-              }}
+              <motion.div
+                key="dock-tooltip"
+                layoutId="dock-tooltip"
+                className="pointer-events-none absolute flex flex-col items-center z-[100]"
+                style={{
+                  left: tooltipX,
+                  bottom: tooltipBottomOffset + 24,
+                  x: "-50%",
+                }}
               initial={{ opacity: 0, y: 6, scale: 0.94 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.94 }}

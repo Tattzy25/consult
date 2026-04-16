@@ -64,7 +64,7 @@ export default function App() {
       onClick: toggleVideo,
     },
     {
-      icon: <Phone className="text-red-500 fill-current rotate-[135deg]" />,
+      icon: <PhoneCallIcon className="text-red-500 rotate-[135deg]" />,
       label: "End Call",
       onClick: disconnect,
     },
@@ -107,7 +107,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-[100dvh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden touch-manipulation selection:bg-brand-primary/30">
+    <div className="min-h-[100svh] bg-zinc-950 text-zinc-100 flex flex-col overflow-y-auto selection:bg-brand-primary/30">
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
         {/* Stage Area */}
         <div
@@ -129,7 +129,7 @@ export default function App() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-10 flex flex-col justify-end items-center p-[10px]"
+                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
               >
                 {/* Call Button at the bottom */}
                 <button
@@ -158,8 +158,8 @@ export default function App() {
                   stageRef={stageRef}
                 />
 
-                {/* Status Text & Controls */}
-                <div className="absolute bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-4">
+                {/* Status Text & Controls at the bottom */}
+                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-4 w-[90%] max-w-lg">
                   <motion.div 
                     key={visualMode}
                     initial={{ opacity: 0, y: 10 }}

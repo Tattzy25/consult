@@ -244,8 +244,9 @@ export function useGeminiLive(systemInstruction: string) {
       });
 
       setIsUserTalking((prev) => {
-        const isTalking = volume > 0.05;
-        if (prev !== isTalking) return isTalking;
+        // Hysteresis to prevent split-second bouncing on background noise
+        if (prev && volume < 0.1) return false;
+        if (!prev && volume >= 0.15) return true;
         return prev;
       });
 
