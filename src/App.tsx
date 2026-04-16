@@ -5,7 +5,8 @@ import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
-import { Dock, type DockItem } from './components/unlumen-ui/dock';
+import { type DockItem } from './components/unlumen-ui/dock';
+import VerticalDock from './components/ui/VerticalDock';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
 const SYSTEM_INSTRUCTION = `
@@ -158,18 +159,20 @@ export default function App() {
                   stageRef={stageRef}
                 />
 
-                {/* Status Text & Controls at the bottom */}
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex flex-col items-center gap-4 w-[90%] max-w-lg">
-                  <motion.div 
+                {/* Status Text - NEW POSITION */}
+                <motion.div
                     key={visualMode}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap"
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap pointer-events-auto"
                   >
                     {getStatusText()}
                   </motion.div>
-                  <Dock items={dockItems} iconSize={48} magnification={1.5} />
+
+                {/* Vertical Dock - NEW COMPONENT */}
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 z-50 pointer-events-auto">
+                  <VerticalDock items={dockItems} />
                 </div>
               </motion.div>
             )}
@@ -187,7 +190,7 @@ export default function App() {
       />
 
       {/* Hidden canvas for video capture */}
-      <canvas ref={canvasRef} width={1280} height={720} className="hidden" />
+      <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
     </div>
   );
 }

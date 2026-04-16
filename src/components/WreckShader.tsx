@@ -253,5 +253,4 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
     };
   }, []);
 
-  return <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-auto" />;
-};
+  return <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-auto" />;};
