@@ -111,9 +111,9 @@ export default function App() {
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
         {/* Stage Area */}
         <div
-          ref={stageRef}
-          className="flex-1 relative bg-black flex items-center justify-center roast-gradient min-h-[500px]"
-        >
+            ref={stageRef}
+            className="flex-1 relative bg-black flex roast-gradient min-h-[500px]"
+          >
           {/* Always mounted WreckShader */}
           <div className="absolute inset-0 pointer-events-none z-0">
             <WreckShader

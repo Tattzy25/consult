@@ -169,6 +169,7 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
 
     const camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
     camera.position.z = window.innerWidth < 768 ? 3.75 : 3.45;
+    camera.position.y = -0.5; // Move the camera down to push the orb up visually
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
