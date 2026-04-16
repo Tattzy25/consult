@@ -37,6 +37,7 @@ export function useGeminiLive(systemInstruction: string) {
     "idle" | "connecting" | "live" | "error"
   >("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -421,6 +422,15 @@ export function useGeminiLive(systemInstruction: string) {
                     { role: "wreck", text: part.text! },
                   ]);
                 }
+                if (part.toolCode) {
+                  // Assuming the toolCode will contain information about the image generation
+                  // For now, let's just set a dummy URL
+                  console.log("Tool code received:", part.toolCode);
+                  // In a real scenario, you would parse part.toolCode and make an HTTP request
+                  // to the MCP endpoint with the extracted parameters (memory, add memory, search).
+                  // For now, we'll simulate a response with a dummy URL.
+                  setGeneratedImageUrl("https://via.placeholder.com/600x400?text=Generated+Image");
+                }
               }
             },
             onclose: () => {
@@ -511,5 +521,7 @@ export function useGeminiLive(systemInstruction: string) {
     flipCamera,
     sendImage,
     isVideoEnabled,
+    generatedImageUrl, // Expose the generated image URL
+    setGeneratedImageUrl, // Expose the setter to clear the image
   };
 }

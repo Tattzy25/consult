@@ -5,8 +5,8 @@ import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
-import { type DockItem } from './components/unlumen-ui/dock';
-import VerticalDock from './components/ui/VerticalDock';
+
+import { Dock } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
 const SYSTEM_INSTRUCTION = `
@@ -155,9 +155,20 @@ export default function App() {
                   stageRef={stageRef}
                 />
 
-                {/* Vertical Dock - NEW COMPONENT */}
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 z-50 pointer-events-auto">
-                  <VerticalDock items={dockItems} />
+                {/* Status Text - NEW POSITION */}
+                <motion.div
+                    key={visualMode}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 text-white font-['Orbitron'] font-bold text-center tracking-widest text-sm sm:text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.8)] uppercase whitespace-nowrap pointer-events-auto"
+                  >
+                    {getStatusText()}
+                  </motion.div>
+
+                {/* Horizontal Dock - NEW COMPONENT */}
+                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+                  <Dock items={dockItems} />
                 </div>
               </motion.div>
             )}
