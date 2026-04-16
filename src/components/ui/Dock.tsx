@@ -1,4 +1,4 @@
-use client";
+'use client';
 
 import * as React from "react";
 import {
@@ -10,7 +10,7 @@ import {
   AnimatePresence,
 } from "motion/react";
 
-import { cn } from "../lib/utils"; 
+import { cn } from "../../lib/utils"; 
 
 export interface DockItem {
   icon: React.ReactNode;

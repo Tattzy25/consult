@@ -6,8 +6,9 @@ import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
 
-import { Dock } from './components/ui/Dock';
+import { Dock, DockItem } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
+import { ImageOverlay } from './components/ui/ImageOverlay';
 
 const SYSTEM_INSTRUCTION = `
 You are a helpful assistant with vision, spund and voice capbilities.
@@ -33,7 +34,9 @@ export default function App() {
     flipCamera,
     sendImage,
     isVideoEnabled,
-    toggleVideo
+    toggleVideo,
+    displayImageUrl,
+    setDisplayImageUrl
   } = useGeminiLive(SYSTEM_INSTRUCTION);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +104,29 @@ export default function App() {
     if (visualMode === 'speaking') return "Shut UP TaTTTy is Speaking...";
     if (visualMode === 'listening') return "TaTTTy Can Hear you ..";
     return "Chilling...";
+  };
+
+  const handleDownloadImage = (imageUrl: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = 'generated_image.png'; // You might want to make this dynamic
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleShareImage = (imageUrl: string) => {
+    // For now, let's just log it or copy to clipboard
+    navigator.clipboard.writeText(imageUrl).then(() => {
+      alert('Image URL copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy image URL: ', err);
+      alert('Failed to copy image URL.');
+    });
+  };
+
+  const handleCloseImageOverlay = () => {
+    setDisplayImageUrl(null);
   };
 
   return (
@@ -187,6 +213,14 @@ export default function App() {
 
       {/* Hidden canvas for video capture */}
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
+
+      {/* Image Overlay */}
+      <ImageOverlay
+        imageUrl={displayImageUrl}
+        onClose={handleCloseImageOverlay}
+        onDownload={handleDownloadImage}
+        onShare={handleShareImage}
+      />
     </div>
   );
 }

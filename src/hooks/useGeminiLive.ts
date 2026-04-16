@@ -37,7 +37,7 @@ export function useGeminiLive(systemInstruction: string) {
     "idle" | "connecting" | "live" | "error"
   >("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [displayImageUrl, setDisplayImageUrl] = useState<string | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -423,13 +423,44 @@ export function useGeminiLive(systemInstruction: string) {
                   ]);
                 }
                 if (part.toolCode) {
-                  // Assuming the toolCode will contain information about the image generation
-                  // For now, let's just set a dummy URL
-                  console.log("Tool code received:", part.toolCode);
-                  // In a real scenario, you would parse part.toolCode and make an HTTP request
-                  // to the MCP endpoint with the extracted parameters (memory, add memory, search).
-                  // For now, we'll simulate a response with a dummy URL.
-                  setGeneratedImageUrl("https://via.placeholder.com/600x400?text=Generated+Image");
+                  try {
+                    const toolCall = JSON.parse(part.toolCode);
+                    console.log("Parsed tool call:", toolCall);
+
+                    // --- REPLACE WITH YOUR ACTUAL MCP ENDPOINT AND LOGIC ---
+                    // Assuming toolCall.name is the tool to be called
+                    // And toolCall.args contains the parameters (memory, add_memory, search)
+                    const mcpEndpoint = process.env.MCP_TOOL_ENDPOINT || "http://localhost:3001/call_tool"; // Replace with your actual endpoint
+
+                    // Construct the request payload based on your MCP endpoint's requirements
+                    const response = await fetch(mcpEndpoint, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        tool_name: toolCall.name,
+                        tool_params: toolCall.args,
+                      }),
+                    });
+
+                    if (!response.ok) {
+                      throw new Error(`MCP tool call failed: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    // Assuming the response contains an 'imageUrl' field
+                    if (data.imageUrl) {
+                      setDisplayImageUrl(data.imageUrl);
+                    } else {
+                      console.warn("MCP tool call response did not contain an imageUrl:", data);
+                    }
+                    // --- END OF MCP ENDPOINT LOGIC ---
+
+                  } catch (e) {
+                    console.error("Error parsing toolCode or calling MCP endpoint:", e);
+                  }
                 }
               }
             },
@@ -521,7 +552,7 @@ export function useGeminiLive(systemInstruction: string) {
     flipCamera,
     sendImage,
     isVideoEnabled,
-    generatedImageUrl, // Expose the generated image URL
-    setGeneratedImageUrl, // Expose the setter to clear the image
+    displayImageUrl, // Expose the image URL to display
+    setDisplayImageUrl, // Expose the setter to clear the image
   };
 }
