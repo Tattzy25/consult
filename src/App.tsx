@@ -112,7 +112,7 @@ export default function App() {
         {/* Stage Area */}
         <div
           ref={stageRef}
-          className="flex-1 relative bg-black flex items-center justify-center roast-gradient"
+          className="flex-1 relative bg-black flex items-center justify-center roast-gradient min-h-[500px]"
         >
           {/* Always mounted WreckShader */}
           <div className="absolute inset-0 pointer-events-none z-0">
