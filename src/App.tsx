@@ -1,18 +1,20 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, SwitchCamera, Phone, ImagePlus, Video, VideoOff, PhoneOff } from 'lucide-react';
+import { Mic, MicOff, SwitchCamera, ImagePlus, Video, VideoOff, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
 import { GeneratedImageOverlay } from './components/ui/GeneratedImageOverlay';
-
 import { Dock, type DockItem } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
+import type { LivePersonaConfig } from './lib/live-session-api';
 
-const SYSTEM_INSTRUCTION = `
-You are a helpful assistant with vision, spund and voice capbilities.
-`;
+const PERSONA_CONFIG: LivePersonaConfig = {
+  personaId: 'default',
+  systemInstruction: 'You are a helpful assistant with vision, sound and voice capabilities.',
+  enableGoogleSearch: true,
+};
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -36,8 +38,8 @@ export default function App() {
     isVideoEnabled,
     toggleVideo,
     generatedImage,
-    setGeneratedImage
-  } = useGeminiLive(SYSTEM_INSTRUCTION);
+    setGeneratedImage,
+  } = useGeminiLive(PERSONA_CONFIG);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +69,6 @@ export default function App() {
       label: !isVideoEnabled ? "Start Video" : "Stop Video",
       onClick: toggleVideo,
     },
-
     {
       icon: <ImagePlus />,
       label: "Upload Image",
@@ -93,27 +94,25 @@ export default function App() {
     }
   }, [status]);
 
-  const visualMode: 'idle' | 'listening' | 'speaking' = isAudioPlaying 
-    ? 'speaking' 
-    : isUserTalking 
-      ? 'listening' 
+  const visualMode: 'idle' | 'listening' | 'speaking' = isAudioPlaying
+    ? 'speaking'
+    : isUserTalking
+      ? 'listening'
       : 'idle';
 
-  const audioLevel = isAudioPlaying 
-    ? 0.85 
-    : isUserTalking 
-      ? 0.12 + (micVolume * 0.4) 
+  const audioLevel = isAudioPlaying
+    ? 0.85
+    : isUserTalking
+      ? 0.12 + (micVolume * 0.4)
       : 0.12;
 
   return (
     <div className="min-h-[100svh] bg-zinc-950 text-zinc-100 flex flex-col overflow-y-auto selection:bg-brand-primary/30">
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
-        {/* Stage Area */}
         <div
-            ref={stageRef}
-            className="flex-1 relative bg-black flex roast-gradient min-h-[500px]"
-          >
-          {/* Always mounted WreckShader */}
+          ref={stageRef}
+          className="flex-1 relative bg-black flex roast-gradient min-h-[500px]"
+        >
           <div className="absolute inset-0 pointer-events-none z-0">
             <WreckShader
               audioLevel={audioLevel}
@@ -139,7 +138,6 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
               >
-                {/* Call Button at the bottom */}
                 <button
                   type="button"
                   onClick={() => startConnection("Aoede")}
@@ -159,14 +157,11 @@ export default function App() {
               </motion.div>
             ) : (
               <motion.div key="connected-screen" className="absolute inset-0 z-10 pointer-events-none">
-                {/* User Camera Preview */}
                 <CameraPreview
                   videoRef={videoRef}
                   cameraFacing={cameraFacing}
                   stageRef={stageRef}
                 />
-
-                {/* Horizontal Dock - MOVED UP TO AVOID IOS HOME BAR */}
                 <div className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
                   <Dock items={dockItems} />
                 </div>
@@ -176,7 +171,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Hidden file input for image uploads */}
       <input
         type="file"
         accept="image/*"
@@ -185,7 +179,6 @@ export default function App() {
         className="hidden"
       />
 
-      {/* Hidden canvas for video capture */}
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
     </div>
   );

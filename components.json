@@ -22,6 +22,7 @@
   },
   "registries": {
     "@soundcn": "https://soundcn.xyz/r/{name}.json",
-    "@unlumen-ui": "https://ui.unlumen.com/r/{name}.json"
+    "@unlumen-ui": "https://ui.unlumen.com/r/{name}.json",
+    "@shadcn/ui": "https://ui.shadcn.com/r/{name}.json"
   }
 }
