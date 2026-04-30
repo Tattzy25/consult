@@ -82,6 +82,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
   const liveSessionStartedAtRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
+  const resumptionHandleRef = useRef<string | null>(null);
   const consentGoogleSearchRef = useRef(false);
   const consentTranscriptionRef = useRef(false);
 
@@ -525,6 +526,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
   const disconnect = useCallback(() => {
     manualDisconnectRef.current = true;
     isSessionOpenRef.current = false;
+    resumptionHandleRef.current = null;
     endSessionTracking("manual_disconnect");
     cleanupMedia();
     resetPlayback();
@@ -552,6 +554,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
       try {
         setStatus("connecting");
         manualDisconnectRef.current = false;
+        await mcpInjector.connect();
         await initAudio();
         await startStreaming();
 
@@ -583,6 +586,10 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             ...(consentTranscriptionRef.current
               ? { inputAudioTranscription: {}, outputAudioTranscription: {} }
               : {}),
+            contextWindowCompression: { slidingWindow: {} },
+            sessionResumption: resumptionHandleRef.current
+              ? { handle: resumptionHandleRef.current }
+              : {},
           },
           callbacks: {
             onopen: async () => {
@@ -595,6 +602,10 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             onmessage: async (message: LiveServerMessage) => {
               if (message.serverContent?.interrupted) {
                 resetPlayback();
+              }
+
+              if ((message as any).sessionResumptionUpdate?.newHandle) {
+                resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
               }
 
               if (consentTranscriptionRef.current) {
@@ -630,7 +641,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                   ]);
                 }
                 if (part.functionCall) {
-                  const { name, args } = part.functionCall;
+                  const { id: callId, name, args } = part.functionCall;
                   if (!name) continue;
                   try {
                     const result = await mcpInjector.executeTool(name, args);
@@ -655,6 +666,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                     sessionRef.current?.sendToolResponse({
                       functionResponses: [
                         {
+                          id: callId,
                           name,
                           response: { result },
                         },
@@ -664,6 +676,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                     sessionRef.current?.sendToolResponse({
                       functionResponses: [
                         {
+                          id: callId,
                           name,
                           response: {
                             error: error.message || "Tool execution failed",
@@ -677,6 +690,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             },
             onclose: () => {
               isSessionOpenRef.current = false;
+              resumptionHandleRef.current = null;
               endSessionTracking("socket_closed");
               cleanupMedia();
               resetPlayback();
@@ -692,6 +706,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             onerror: (error) => {
               console.error("Live API Error:", error);
               isSessionOpenRef.current = false;
+              resumptionHandleRef.current = null;
               endSessionTracking("socket_error");
               cleanupMedia();
               resetPlayback();

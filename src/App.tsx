@@ -8,13 +8,7 @@ import { CameraPreview } from './components/video/CameraPreview';
 import { GeneratedImageOverlay } from './components/ui/GeneratedImageOverlay';
 import { Dock, type DockItem } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import type { LivePersonaConfig } from './lib/live-session-api';
-
-const PERSONA_CONFIG: LivePersonaConfig = {
-  personaId: 'default',
-  systemInstruction: 'You are a helpful assistant with vision, sound and voice capabilities.',
-  enableGoogleSearch: true,
-};
+import { PERSONA_CONFIG } from './lib/persona';
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -50,9 +44,7 @@ export default function App() {
       reader.onloadend = () => {
         const result = reader.result as string;
         const base64Data = result.split(',')[1];
-        if (base64Data) {
-          sendImage(base64Data);
-        }
+        if (base64Data) sendImage(base64Data);
       };
       reader.readAsDataURL(file);
     }
@@ -111,13 +103,11 @@ export default function App() {
       <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
         <div
           ref={stageRef}
-          className="flex-1 relative bg-black flex roast-gradient min-h-[500px]"
+          className="flex-1 relative bg-black flex roast-gradient min-h-[100svh]"
         >
+          {/* Orb — always behind everything */}
           <div className="absolute inset-0 pointer-events-none z-0">
-            <WreckShader
-              audioLevel={audioLevel}
-              visualMode={visualMode}
-            />
+            <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
           </div>
 
           <AnimatePresence>
@@ -129,6 +119,24 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          {/*
+            CameraPreview is ALWAYS mounted so videoRef.current is non-null
+            when startStreaming runs — this lets play() succeed immediately
+            when the camera permission is granted (within the gesture context).
+            It's invisible until the call is live.
+          */}
+          <div
+            className="absolute inset-0 z-10 pointer-events-none"
+            style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
+          >
+            <CameraPreview
+              videoRef={videoRef}
+              cameraFacing={cameraFacing}
+              stageRef={stageRef}
+            />
+          </div>
+
+          {/* Phone button (pre-call) / Dock (in-call) */}
           <AnimatePresence mode="wait">
             {!isConnected ? (
               <motion.div
@@ -136,7 +144,7 @@ export default function App() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
+                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-auto"
               >
                 <button
                   type="button"
@@ -156,14 +164,16 @@ export default function App() {
                 </button>
               </motion.div>
             ) : (
-              <motion.div key="connected-screen" className="absolute inset-0 z-10 pointer-events-none">
-                <CameraPreview
-                  videoRef={videoRef}
-                  cameraFacing={cameraFacing}
-                  stageRef={stageRef}
-                />
-                <div className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-                  <Dock items={dockItems} />
+              <motion.div
+                key="connected-screen"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
+                style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+              >
+                <div className="flex justify-center pointer-events-auto">
+                  <Dock items={dockItems} iconSize={42} magnification={1.5} distance={80} />
                 </div>
               </motion.div>
             )}
