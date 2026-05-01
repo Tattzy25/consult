@@ -478,40 +478,39 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
   }, [startVideoCapture]);
 
   const flipCamera = useCallback(async () => {
-    try {
-      if (!streamRef.current) return;
+    if (!streamRef.current) return;
 
-      const nextFacing =
-        cameraFacingRef.current === "user" ? "environment" : "user";
-      cameraFacingRef.current = nextFacing;
-      setCameraFacing(nextFacing);
+    const nextFacing =
+      cameraFacingRef.current === "user" ? "environment" : "user";
+    cameraFacingRef.current = nextFacing;
+    setCameraFacing(nextFacing);
 
-      streamRef.current.getVideoTracks().forEach((track) => {
-        track.stop();
-        streamRef.current?.removeTrack(track);
-      });
+    streamRef.current.getVideoTracks().forEach((track) => {
+      track.stop();
+      streamRef.current?.removeTrack(track);
+    });
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: nextFacing,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 24, max: 30 },
-        },
-      });
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: nextFacing,
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+    });
 
-      const newVideoTrack = newStream.getVideoTracks()[0];
-      if (!newVideoTrack) return;
-      streamRef.current.addTrack(newVideoTrack);
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    if (!newVideoTrack) return;
+    streamRef.current.addTrack(newVideoTrack);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        void videoRef.current.play();
-      }
+    if (videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play();
+    }
 
-      if (isSessionOpenRef.current && isVideoEnabledRef.current) {
-        startVideoCapture();
-      }
+    if (isSessionOpenRef.current && isVideoEnabledRef.current) {
+      startVideoCapture();
+    }
   }, [startVideoCapture]);
 
   const disconnect = useCallback(() => {
