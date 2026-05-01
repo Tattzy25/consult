@@ -31,8 +31,6 @@ export function GeneratedImageOverlay({ imageUrl, onClose }: Props) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to download image", err);
-  
-      window.open(imageUrl, '_blank');
     }
   };
 

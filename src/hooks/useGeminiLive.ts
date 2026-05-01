@@ -395,8 +395,8 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
 
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {
-        // Browser autoplay policies can reject until the user gesture propagates.
+      videoRef.current.play().catch((err) => {
+        console.error("Camera play failed:", err);
       });
     }
 
@@ -648,11 +648,15 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                   try {
                     const result = await mcpInjector.executeTool(name, args);
 
-                    // Extract img_url from tool response
                     if (result && typeof result.text === "string") {
-                      const parsed = JSON.parse(result.text.trim());
-                      if (parsed?.img_url && typeof parsed.img_url === "string") {
-                        setGeneratedImage(parsed.img_url);
+                      try {
+                        const parsed = JSON.parse(result.text.trim());
+                        const imageUrl = parsed?.img_url ?? (Array.isArray(parsed?.output) ? parsed.output[0] : null);
+                        if (imageUrl && typeof imageUrl === "string") {
+                          setGeneratedImage(imageUrl);
+                        }
+                      } catch {
+                        // result.text was not JSON — not an image response
                       }
                     }
 

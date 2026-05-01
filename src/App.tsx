@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Mic, MicOff, SwitchCamera, ImagePlus, Video, VideoOff, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -10,10 +10,12 @@ import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { Dock, type DockItem } from './components/ui/Dock';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { PERSONA_CONFIG } from './lib/persona';
+import { VOICES, DEFAULT_VOICE_ID } from './lib/voices';
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
+  const [selectedVoice, setSelectedVoice] = useState(DEFAULT_VOICE_ID);
 
   const {
     isConnected,
@@ -147,11 +149,28 @@ export default function App() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-auto"
+                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-4"
               >
+                <div className="flex gap-2">
+                  {VOICES.map((voice) => (
+                    <button
+                      key={voice.id}
+                      type="button"
+                      onClick={() => setSelectedVoice(voice.id)}
+                      className={cn(
+                        "px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 touch-manipulation",
+                        selectedVoice === voice.id
+                          ? "bg-white text-black"
+                          : "bg-white/10 text-white hover:bg-white/20"
+                      )}
+                    >
+                      {voice.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
-                  onClick={() => startConnection("Aoede")}
+                  onClick={() => startConnection(selectedVoice)}
                   disabled={status === "connecting"}
                   className={cn(
                     "relative flex items-center justify-center p-4 text-white",
