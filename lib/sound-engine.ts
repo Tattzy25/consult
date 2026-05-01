@@ -13,8 +13,8 @@ export async function decodeAudioData(dataUri: string): Promise<AudioBuffer> {
   if (cached) return cached;
 
   const ctx = getAudioContext();
-  const base64 = dataUri.split(",")[1];
-  const binaryString = atob(base64);
+  const EN = dataUri.split(",")[1];
+  const binaryString = atob(EN);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);

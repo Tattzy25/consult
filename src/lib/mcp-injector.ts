@@ -19,7 +19,7 @@ async function fetchTools(url: string): Promise<McpTool[]> {
 }
 
 function toGeminiDeclaration(tool: McpTool) {
-  const decl: any = { name: tool.name };
+  const decl: any = { name: tool.name, behavior: "NON_BLOCKING" };
   if (tool.description) decl.description = tool.description;
   if (tool.inputSchema) {
     decl.parameters = {

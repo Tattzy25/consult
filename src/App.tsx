@@ -37,17 +37,21 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        const base64Data = result.split(',')[1];
-        if (base64Data) sendImage(base64Data);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const bitmap = await createImageBitmap(file);
+    const size = 1024;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const scale = Math.min(size / bitmap.width, size / bitmap.height);
+    const w = bitmap.width * scale;
+    const h = bitmap.height * scale;
+    ctx.drawImage(bitmap, (size - w) / 2, (size - h) / 2, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    sendImage(dataUrl.split(',')[1]);
   };
 
   const handleShare = async () => {
@@ -204,10 +208,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleShare}
-                    className={cn(
-                      "transition-all active:scale-90 touch-manipulation",
-                      generatedImage ? "text-white/80 hover:text-white" : "text-white/20"
-                    )}
+                    className="text-white/80 hover:text-white active:scale-90 transition-all touch-manipulation"
                     style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
                     <Share2 size={26} />
@@ -226,7 +227,7 @@ export default function App() {
                         <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse" />
                       </>
                     ) : (
-                      <Bell size={26} className="text-white/30" />
+                      <Bell size={26} className="text-white/80" />
                     )}
                   </button>
                 </div>
