@@ -31,7 +31,7 @@ export function GeneratedImageOverlay({ imageUrl, onClose }: Props) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to download image", err);
-      // Fallback: open in new tab if blob fetch fails (e.g., CORS)
+  
       window.open(imageUrl, '_blank');
     }
   };
