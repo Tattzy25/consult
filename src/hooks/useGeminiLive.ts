@@ -651,7 +651,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                         {
                           id: callId,
                           name,
-                          response: { result },
+                          response: { result, scheduling: "INTERRUPT" },
                         },
                       ],
                     });
@@ -662,7 +662,8 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                           id: callId,
                           name,
                           response: {
-                            error: error.message || "Tool execution failed",
+                            error: error.message,
+                            scheduling: "INTERRUPT",
                           },
                         },
                       ],
