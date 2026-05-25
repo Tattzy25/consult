@@ -35,9 +35,8 @@ export const mcpInjector = {
     toolEndpointMap.clear();
     cachedGeminiTools = [];
 
-    const hardcoded = "https://api.dify.ai/mcp/server/Hf3IZklA1vyAHAGh/mcp";
-    const envRaw = import.meta.env.VITE_MCP_ENDPOINTS as string | undefined;
-    const raw = envRaw || hardcoded;
+    const raw = import.meta.env.VITE_MCP_ENDPOINTS as string | undefined;
+    if (!raw) return;
 
     const urls = raw.split(",").map((u) => u.trim()).filter(Boolean);
 
