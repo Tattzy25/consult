@@ -629,8 +629,12 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                     { role: "wreck", text: part.text! },
                   ]);
                 }
-                if (part.functionCall) {
-                  const { id: callId, name, args } = part.functionCall;
+              }
+
+              const toolCall = (message as any).toolCall;
+              if (toolCall?.functionCalls?.length) {
+                for (const fc of toolCall.functionCalls) {
+                  const { id: callId, name, args } = fc;
                   if (!name) continue;
                   try {
                     const result = await mcpInjector.executeTool(name, args);
@@ -652,7 +656,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                         {
                           id: callId,
                           name,
-                          response: { result, scheduling: "INTERRUPT" },
+                          response: { result },
                         },
                       ],
                     });
@@ -662,10 +666,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                         {
                           id: callId,
                           name,
-                          response: {
-                            error: error.message,
-                            scheduling: "INTERRUPT",
-                          },
+                          response: { error: error.message },
                         },
                       ],
                     });
