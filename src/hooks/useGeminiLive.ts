@@ -14,7 +14,7 @@ const OUTPUT_RATE = 24000;
 const OUTPUT_PREBUFFER_SAMPLES = 2400; // 100ms at 24k
 const VIDEO_INTERVAL_MS = 500;
 
-type TranscriptItem = { role: "user" | "wreck"; text: string };
+type TranscriptItem = { role: "user" | "tatty"; text: string };
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -612,7 +612,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 if (outputTranscript) {
                   setTranscript((prev) => [
                     ...prev,
-                    { role: "wreck", text: outputTranscript },
+                    { role: "tatty", text: outputTranscript },
                   ]);
                 }
               }
@@ -626,7 +626,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 if (part.text && consentTranscriptionRef.current) {
                   setTranscript((prev) => [
                     ...prev,
-                    { role: "wreck", text: part.text! },
+                    { role: "tatty", text: part.text! },
                   ]);
                 }
               }
