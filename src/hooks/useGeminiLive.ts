@@ -7,6 +7,7 @@ import {
   type LivePersonaConfig,
   startLiveSession,
 } from "../lib/live-session-api.ts";
+import facetimeTool from "../lib/facetime-tool.json";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;

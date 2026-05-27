@@ -1,0 +1,29 @@
+{
+  "name": "facetime_tools",
+  "description": "High-performance, low-latency MCP built strictly for live FaceTime agent sessions. Handles real-time Replicate image generation, instant credit checks, dynamic user memory retrieval, and immediate context logging, zero-friction video interactions.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image_gen_prompt": {
+        "type": "string",
+        "description": "Calls Replicate directly (no enhancer). CRITICAL: Never use \"tattoo\", \"ink\", \"placement\", or related terms. MUST start exactly with: \"a TA-TTT-OO-ME style \"."
+      },
+      "customer_id": {
+        "type": "string",
+        "description": "Unique identifier required for every single tool call across the entire lifecycle, with the sole exception of the standalone credit check."
+      },
+      "search_memory": {
+        "type": "string",
+        "description": "Queries user memory & knowledge base. Requires customer_id and the search query. If conversation_id is requested, map the workflow_id to it. Dynamic skills update instantly."
+      },
+      "credit_check_customer_id": {
+        "type": "string",
+        "description": "Instantly retrieves current credit balance. Input must be the literal customer_id. Execution is immediate, returning the balance within 2 seconds."
+      },
+      "add_memory": {
+        "type": "string",
+        "description": "Explicitly logs context. Requires customer_id, Agent response and the user message. Note: All other tools automatically trigger a memory log after execution."
+      }
+    }
+  }
+}
