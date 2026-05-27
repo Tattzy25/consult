@@ -832,6 +832,9 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             const sessionEndTime = new Date().toISOString();
             const customerId = customerIdRef.current;
             if (customerId) {
+              if (!manualDisconnectRef.current) {
+                creditChargeFailedRef.current = true;
+              }
               void zohoLog({
                 source_id: "facetime_4000",
                 customer_id: customerId,
@@ -874,6 +877,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
             const sessionEndTime = new Date().toISOString();
             const customerId = customerIdRef.current;
             if (customerId) {
+              creditChargeFailedRef.current = true;
               void zohoLog({
                 source_id: "facetime_4000",
                 customer_id: customerId,
@@ -909,6 +913,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
         const errMsg = err instanceof Error ? err.message : String(err);
         const failTime = new Date().toISOString();
         if (customerIdRef.current) {
+          creditChargeFailedRef.current = true;
           void zohoLog({
             source_id: "facetime_4000",
             customer_id: customerIdRef.current,
