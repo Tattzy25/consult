@@ -9,6 +9,7 @@ import {
 } from "../lib/live-session-api.ts";
 import { SERVICE_CONFIG } from "../lib/service-config";
 import facetimeTool from "../lib/facetime-tool.json";
+import disconnectTool from "../lib/disconnect-tool.json";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -34,6 +35,39 @@ function base64ToPCM16(base64: string): Int16Array {
   return new Int16Array(bytes.buffer);
 }
 
+function zohoLog(record: {
+  source_id: string;
+  customer_id: string;
+  error: string;
+  success: string;
+  timestamp: string;
+  session_start_time: string;
+  session_end_time: string;
+  fail_credit_refund: string;
+  session_summary: string;
+}) {
+  return fetch(SERVICE_CONFIG.zohoMcp, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json, type/event-stream" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "tools/call",
+      params: {
+        name: "ZohoSheet_add_records_to_worksheet",
+        arguments: {
+          path_variables: { addrecordstoworksheet: "v2", resource_id: SERVICE_CONFIG.zohoSheetResourceId },
+          query_params: {
+            method: "worksheet.records.add",
+            worksheet_name: "Sheet1",
+            json_data: [record],
+          },
+        },
+      },
+    }),
+  });
+}
+
 export function useGeminiLive(personaConfig: LivePersonaConfig) {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -52,6 +86,8 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
   const [consentGoogleSearch, setConsentGoogleSearchState] = useState(false);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
+  const [creditMessage, setCreditMessage] = useState<string | null>(null);
+  const [sessionSummary, setSessionSummary] = useState<string | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -86,6 +122,10 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
   const resumptionHandleRef = useRef<string | null>(null);
   const consentGoogleSearchRef = useRef(false);
   const consentTranscriptionRef = useRef(false);
+  const transcriptRef = useRef<TranscriptItem[]>([]);
+  const customerIdRef = useRef<string | null>(null);
+  const sessionStartTimeRef = useRef<string | null>(null);
+  const creditChargeFailedRef = useRef(false);
 
   const setConsentGoogleSearch = useCallback((value: boolean) => {
     consentGoogleSearchRef.current = value;
@@ -531,19 +571,125 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
 
     setIsConnected(false);
     setStatus("idle");
-    setTranscript([]);
     setGeneratedImage(null);
     setSessionDurationMs(0);
+    // transcript and summary cleared/set in onclose
   }, [cleanupMedia, endSessionTracking, resetPlayback]);
 
   const startConnection = useCallback(
     async (selectedVoice: string) => {
       setStatus("connecting");
       manualDisconnectRef.current = false;
+      setCreditMessage(null);
+      setSessionSummary(null);
+
+      try {
       await initAudio();
       await startStreaming();
 
-      const tools: any[] = [{ functionDeclarations: [facetimeTool] }];
+      const sessionStartTime = new Date().toISOString();
+      sessionStartTimeRef.current = sessionStartTime;
+
+      const shopifyCustomerId = (window as any).Shopify?.customer?.id?.toString() as string | undefined;
+      customerIdRef.current = shopifyCustomerId ?? null;
+
+      if (shopifyCustomerId) {
+        const initRes = await fetch(SERVICE_CONFIG.difySessionCharge, {
+          method: "POST",
+          signal: AbortSignal.timeout(15000),
+          headers: { "Content-Type": "application/json", "Accept": "application/json, type/event-stream" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2024-11-05",
+              capabilities: {},
+              clientInfo: { name: "facetime-client", version: "1.0" },
+            },
+          }),
+        });
+
+        if (!initRes.ok) {
+          const errMsg = `Credit service error: HTTP ${initRes.status}`;
+          setCreditMessage(errMsg);
+          void zohoLog({
+            source_id: "facetime_4000",
+            customer_id: shopifyCustomerId,
+            error: errMsg,
+            success: "",
+            timestamp: sessionStartTime,
+            session_start_time: sessionStartTime,
+            session_end_time: "",
+            fail_credit_refund: "250",
+            session_summary: "",
+          });
+          cleanupMedia();
+          resetPlayback();
+          sessionStartTimeRef.current = null;
+          customerIdRef.current = null;
+          setStatus("idle");
+          return;
+        }
+
+        const chargeRes = await fetch(SERVICE_CONFIG.difySessionCharge, {
+          method: "POST",
+          signal: AbortSignal.timeout(15000),
+          headers: { "Content-Type": "application/json", "Accept": "application/json, type/event-stream" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "credit_check",
+              arguments: {
+                customer_id: shopifyCustomerId,
+                credit_amount: "250",
+                source_id: "facetime_4000",
+              },
+            },
+          }),
+        });
+        const chargeData = await chargeRes.json();
+        const chargeText = chargeData.result?.content?.[0]?.text;
+
+        if (chargeData.error || !chargeText) {
+          const errMsg = chargeData.error ? JSON.stringify(chargeData.error) : "Credit charge returned no result";
+          setCreditMessage(errMsg);
+          void zohoLog({
+            source_id: "facetime_4000",
+            customer_id: shopifyCustomerId,
+            error: errMsg,
+            success: "",
+            timestamp: sessionStartTime,
+            session_start_time: sessionStartTime,
+            session_end_time: "",
+            fail_credit_refund: "250",
+            session_summary: "",
+          });
+          cleanupMedia();
+          resetPlayback();
+          sessionStartTimeRef.current = null;
+          customerIdRef.current = null;
+          setStatus("idle");
+          return;
+        }
+
+        setCreditMessage(chargeText);
+        void zohoLog({
+          source_id: "facetime_4000",
+          customer_id: shopifyCustomerId,
+          error: "",
+          success: "200",
+          timestamp: sessionStartTime,
+          session_start_time: sessionStartTime,
+          session_end_time: "",
+          fail_credit_refund: "",
+          session_summary: "",
+        });
+      }
+
+      const tools: any[] = [{ functionDeclarations: [facetimeTool, disconnectTool] }];
       if (personaConfig.enableGoogleSearch && consentGoogleSearchRef.current) {
         tools.push({ googleSearch: {} });
       }
@@ -555,158 +701,227 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
 
       const model = personaConfig.model!;
 
-        const session = await ai.live.connect({
-          model,
-          config: {
-            responseModalities: [Modality.AUDIO],
-            systemInstruction: personaConfig.systemInstruction,
-            tools: tools.length > 0 ? tools : undefined,
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: selectedVoice },
-              },
+      const session = await ai.live.connect({
+        model,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          systemInstruction: personaConfig.systemInstruction,
+          tools: tools.length > 0 ? tools : undefined,
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: selectedVoice },
             },
-            ...(consentTranscriptionRef.current
-              ? { inputAudioTranscription: {}, outputAudioTranscription: {} }
-              : {}),
-            contextWindowCompression: { slidingWindow: {} },
-            sessionResumption: resumptionHandleRef.current
-              ? { handle: resumptionHandleRef.current }
-              : {},
           },
-          callbacks: {
-            onopen: async () => {
-              isSessionOpenRef.current = true;
-              setIsConnected(true);
-              setStatus("live");
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          contextWindowCompression: { slidingWindow: {} },
+          sessionResumption: resumptionHandleRef.current
+            ? { handle: resumptionHandleRef.current }
+            : {},
+        },
+        callbacks: {
+          onopen: async () => {
+            isSessionOpenRef.current = true;
+            setIsConnected(true);
+            setStatus("live");
+            resetPlayback();
+            beginSessionTracking(selectedVoice, model);
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            if (message.serverContent?.interrupted) {
               resetPlayback();
-              beginSessionTracking(selectedVoice, model);
-            },
-            onmessage: async (message: LiveServerMessage) => {
-              if (message.serverContent?.interrupted) {
-                resetPlayback();
-              }
+            }
 
-              if ((message as any).sessionResumptionUpdate?.newHandle) {
-                resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
-              }
+            if ((message as any).sessionResumptionUpdate?.newHandle) {
+              resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
+            }
 
-              if (consentTranscriptionRef.current) {
-                const inputTranscript =
-                  message.serverContent?.inputTranscription?.text;
-                if (inputTranscript) {
-                  setTranscript((prev) => [
-                    ...prev,
-                    { role: "user", text: inputTranscript },
-                  ]);
+            const inputTranscript =
+              message.serverContent?.inputTranscription?.text;
+            if (inputTranscript) {
+              const item: TranscriptItem = { role: "user", text: inputTranscript };
+              transcriptRef.current = [...transcriptRef.current, item];
+              setTranscript((prev) => [...prev, item]);
+            }
+
+            const outputTranscript =
+              message.serverContent?.outputTranscription?.text;
+            if (outputTranscript) {
+              const item: TranscriptItem = { role: "tatty", text: outputTranscript };
+              transcriptRef.current = [...transcriptRef.current, item];
+              setTranscript((prev) => [...prev, item]);
+            }
+
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts) for (const part of parts) {
+              if (part.inlineData?.data) {
+                const pcm = base64ToPCM16(part.inlineData.data);
+                enqueueOutputPCM(pcm);
+              }
+              if (part.text) {
+                const item: TranscriptItem = { role: "tatty", text: part.text };
+                transcriptRef.current = [...transcriptRef.current, item];
+                setTranscript((prev) => [...prev, item]);
+              }
+            }
+
+            if (message.toolCall?.functionCalls?.length) {
+              for (const fc of message.toolCall.functionCalls) {
+                if (fc.name === "disconnect_session") {
+                  const reason = (fc.args as any)?.reason ?? "content_violation";
+                  const messages: Record<string, string> = {
+                    child_sexual_content: "Session ended: content involving minors is not permitted.",
+                    sexual_act_non_tattoo: "Session ended: content outside of tattoo consultation is not permitted.",
+                  };
+                  toast.error(messages[reason] ?? "Session ended by TaTTTy.");
+                  manualDisconnectRef.current = true;
+                  sessionRef.current?.close();
+                  return;
                 }
 
-                const outputTranscript =
-                  message.serverContent?.outputTranscription?.text;
-                if (outputTranscript) {
-                  setTranscript((prev) => [
-                    ...prev,
-                    { role: "tatty", text: outputTranscript },
-                  ]);
-                }
+                const res = await fetch(SERVICE_CONFIG.difyMcp, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, type/event-stream' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'tools/call',
+                    params: { name: fc.name, arguments: fc.args },
+                  }),
+                });
+                const data = await res.json();
+                const resultText = data.result?.content?.[0]?.text;
+                const parsed = JSON.parse(resultText);
+                if (parsed?.image_url) setGeneratedImage(parsed.image_url);
+
+                void zohoLog({
+                  source_id: 'facetime_4000',
+                  customer_id: (fc.args as any).customer_id ?? '',
+                  error: data.error ? JSON.stringify(data.error) : '',
+                  success: data.error ? '' : '200',
+                  timestamp: new Date().toISOString(),
+                  session_start_time: sessionStartTimeRef.current ?? '',
+                  session_end_time: '',
+                  fail_credit_refund: '',
+                  session_summary: '',
+                });
+
+                sessionRef.current?.sendToolResponse({
+                  functionResponses: [{ id: fc.id, name: fc.name, response: parsed }],
+                });
               }
+            }
 
-              const parts = message.serverContent?.modelTurn?.parts;
-              if (parts) for (const part of parts) {
-                if (part.inlineData?.data) {
-                  const pcm = base64ToPCM16(part.inlineData.data);
-                  enqueueOutputPCM(pcm);
-                }
-                if (part.text && consentTranscriptionRef.current) {
-                  setTranscript((prev) => [
-                    ...prev,
-                    { role: "tatty", text: part.text! },
-                  ]);
-                }
-              }
+          },
+          onclose: () => {
+            isSessionOpenRef.current = false;
+            resumptionHandleRef.current = null;
 
-              if (message.toolCall?.functionCalls?.length) {
-                for (const fc of message.toolCall.functionCalls) {
-                  const res = await fetch(SERVICE_CONFIG.difyMcp, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      jsonrpc: '2.0',
-                      id: Date.now(),
-                      method: 'tools/call',
-                      params: { name: fc.name, arguments: fc.args },
-                    }),
-                  });
-                  const data = await res.json();
+            const items = transcriptRef.current;
+            const summary = items.length > 0
+              ? items.map((t) => `${t.role === "user" ? "User" : "TaTTTy"}: ${t.text}`).join("\n")
+              : null;
+            if (summary) setSessionSummary(summary);
 
-                  void fetch(SERVICE_CONFIG.zohoMcp, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
-                    body: JSON.stringify({
-                      jsonrpc: '2.0',
-                      id: Date.now(),
-                      method: 'tools/call',
-                      params: {
-                        name: 'ZohoSheet_add_records_to_worksheet',
-                        arguments: {
-                          path_variables: { addrecordstoworksheet: 'v2', resource_id: SERVICE_CONFIG.zohoSheetResourceId },
-                          query_params: {
-                            method: 'worksheet.records.add',
-                            worksheet_name: 'Sheet1',
-                            json_data: [{
-                              source_id: fc.name,
-                              customer_id: (fc.args as any).customer_id,
-                              error: data.error ? JSON.stringify(data.error) : '',
-                              success: data.error ? '' : '200',
-                              timestamps: new Date().toISOString(),
-                            }],
-                          },
-                        },
-                      },
-                    }),
-                  });
+            const sessionEndTime = new Date().toISOString();
+            const customerId = customerIdRef.current;
+            if (customerId) {
+              void zohoLog({
+                source_id: "facetime_4000",
+                customer_id: customerId,
+                error: "",
+                success: "",
+                timestamp: sessionEndTime,
+                session_start_time: sessionStartTimeRef.current ?? "",
+                session_end_time: sessionEndTime,
+                fail_credit_refund: creditChargeFailedRef.current ? "250" : "",
+                session_summary: summary ?? "",
+              });
+            }
 
-                  sessionRef.current?.sendToolResponse({
-                    functionResponses: [{ id: fc.id, name: fc.name, response: data.result }],
-                  });
-                }
-              }
-
-            },
-            onclose: () => {
-              isSessionOpenRef.current = false;
-              resumptionHandleRef.current = null;
+            if (!manualDisconnectRef.current) {
               endSessionTracking("socket_closed");
               cleanupMedia();
               resetPlayback();
               sessionRef.current = null;
               setIsConnected(false);
               setStatus("idle");
+              setGeneratedImage(null);
               setSessionDurationMs(0);
-              if (!manualDisconnectRef.current) {
-                toast.error("Live session closed unexpectedly");
-              }
-              manualDisconnectRef.current = false;
-            },
-            onerror: (error) => {
-              isSessionOpenRef.current = false;
-              resumptionHandleRef.current = null;
-              endSessionTracking("socket_error");
-              cleanupMedia();
-              resetPlayback();
-              sessionRef.current = null;
-              setIsConnected(false);
-              setStatus("error");
-              setSessionDurationMs(0);
-              manualDisconnectRef.current = true;
-              toast.error(
-                error instanceof Error ? error.message : "Live API error",
-              );
-            },
-          },
-        });
+              toast.error("Live session closed unexpectedly");
+            }
 
-        sessionRef.current = session;
+            transcriptRef.current = [];
+            setTranscript([]);
+            manualDisconnectRef.current = false;
+          },
+          onerror: (error) => {
+            isSessionOpenRef.current = false;
+            resumptionHandleRef.current = null;
+
+            const items = transcriptRef.current;
+            const summary = items.length > 0
+              ? items.map((t) => `${t.role === "user" ? "User" : "TaTTTy"}: ${t.text}`).join("\n")
+              : null;
+            if (summary) setSessionSummary(summary);
+
+            const sessionEndTime = new Date().toISOString();
+            const customerId = customerIdRef.current;
+            if (customerId) {
+              void zohoLog({
+                source_id: "facetime_4000",
+                customer_id: customerId,
+                error: error instanceof Error ? error.message : String(error),
+                success: "",
+                timestamp: sessionEndTime,
+                session_start_time: sessionStartTimeRef.current ?? "",
+                session_end_time: sessionEndTime,
+                fail_credit_refund: creditChargeFailedRef.current ? "250" : "",
+                session_summary: summary ?? "",
+              });
+            }
+
+            transcriptRef.current = [];
+            setTranscript([]);
+            endSessionTracking("socket_error");
+            cleanupMedia();
+            resetPlayback();
+            sessionRef.current = null;
+            setIsConnected(false);
+            setStatus("error");
+            setSessionDurationMs(0);
+            manualDisconnectRef.current = true;
+            toast.error(
+              error instanceof Error ? error.message : "Live API error",
+            );
+          },
+        },
+      });
+
+      sessionRef.current = session;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const failTime = new Date().toISOString();
+        if (customerIdRef.current) {
+          void zohoLog({
+            source_id: "facetime_4000",
+            customer_id: customerIdRef.current,
+            error: errMsg,
+            success: "",
+            timestamp: failTime,
+            session_start_time: sessionStartTimeRef.current ?? "",
+            session_end_time: failTime,
+            fail_credit_refund: "250",
+            session_summary: "",
+          });
+        }
+        cleanupMedia();
+        resetPlayback();
+        sessionStartTimeRef.current = null;
+        customerIdRef.current = null;
+        setStatus("idle");
+        toast.error(errMsg);
+      }
     },
     [
       beginSessionTracking,
@@ -787,5 +1002,9 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
     consentTranscription,
     setConsentGoogleSearch,
     setConsentTranscription,
+    creditMessage,
+    setCreditMessage,
+    sessionSummary,
+    setSessionSummary,
   };
 }

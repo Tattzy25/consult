@@ -10,17 +10,8 @@ const PORT = process.env.PORT;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
-app.post('/api/session-token', async (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: 'Not configured' });
-    return;
-  }
-
-  const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
-  const token = await (client as any).authTokens.create();
-
-  res.status(200).json({ token: token.name });
+app.post('/api/session-token', (req, res) => {
+  res.status(200).json({ token: process.env.GEMINI_API_KEY ?? '' });
 });
 
 app.listen(PORT, () => {

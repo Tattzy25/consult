@@ -1,0 +1,14 @@
+{
+  "name": "disconnect_session",
+  "description": "Immediately terminates the live session. Only call this for absolute violations: (1) user is performing sexual acts clearly unrelated to tattoo consultation, or (2) any sexual content, requests, or acts involving a minor. For children simply appearing on camera, give a verbal warning instead — do not call this tool.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string",
+        "description": "The specific violation: 'sexual_act_non_tattoo' or 'child_sexual_content'"
+      }
+    },
+    "required": ["reason"]
+  }
+}

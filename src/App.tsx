@@ -1,12 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { Mic, MicOff, ImagePlus, PhoneOff, Share2, Bell, BellRing } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { cn } from './lib/utils';
 import { WreckShader } from './components/WreckShader';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
 import { GeneratedImageOverlay } from './components/ui/GeneratedImageOverlay';
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
+import { DisclaimerModal } from './components/ui/DisclaimerModal';
+import { SessionSummaryOverlay } from './components/ui/SessionSummaryOverlay';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { PERSONA_CONFIG } from './lib/persona';
 import { VOICES, DEFAULT_VOICE_ID } from './lib/voices';
@@ -16,6 +19,8 @@ export default function App() {
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
   const [selectedVoice, setSelectedVoice] = useState(DEFAULT_VOICE_ID);
   const [showImageOverlay, setShowImageOverlay] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
 
   const {
     isConnected,
@@ -33,9 +38,26 @@ export default function App() {
     flipCamera,
     sendImage,
     generatedImage,
+    creditMessage,
+    setCreditMessage,
+    sessionSummary,
+    setSessionSummary,
   } = useGeminiLive(PERSONA_CONFIG);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (creditMessage) {
+      toast(creditMessage);
+      setCreditMessage(null);
+    }
+  }, [creditMessage, setCreditMessage]);
+
+  React.useEffect(() => {
+    if (sessionSummary) {
+      setShowSummary(true);
+    }
+  }, [sessionSummary]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,7 +158,7 @@ export default function App() {
               >
                 <button
                   type="button"
-                  onClick={() => startConnection(selectedVoice)}
+                  onClick={() => setShowDisclaimer(true)}
                   disabled={status === "connecting"}
                   className={cn(
                     "relative flex items-center justify-center p-4 text-green-400",
@@ -229,6 +251,24 @@ export default function App() {
       />
 
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
+
+      <DisclaimerModal
+        open={showDisclaimer}
+        onAccept={() => {
+          setShowDisclaimer(false);
+          startConnection(selectedVoice);
+        }}
+        onDecline={() => { setShowDisclaimer(false); window.location.href = '/'; }}
+      />
+
+      <SessionSummaryOverlay
+        open={showSummary}
+        summary={sessionSummary ?? ''}
+        onClose={() => {
+          setShowSummary(false);
+          setSessionSummary(null);
+        }}
+      />
     </div>
   );
 }
