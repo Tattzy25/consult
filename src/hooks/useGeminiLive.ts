@@ -791,6 +791,12 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 });
                 const data = await res.json();
                 const resultText = data.result?.content?.[0]?.text;
+                if (!resultText) {
+                  sessionRef.current?.sendToolResponse({
+                    functionResponses: [{ id: fc.id, name: fc.name, response: { error: "MCP tool returned a malformed result" } }],
+                  });
+                  continue;
+                }
                 const parsed = JSON.parse(resultText);
                 if (parsed?.image_url) setGeneratedImage(parsed.image_url);
 
