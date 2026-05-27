@@ -68,7 +68,7 @@ export default function App() {
   }, [status]);
 
   React.useEffect(() => {
-    if (generatedImage) setShowImageOverlay(false);
+    if (generatedImage) setShowImageOverlay(true);
   }, [generatedImage]);
 
   const visualMode: 'idle' | 'listening' | 'speaking' = isAudioPlaying

@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
-import { mcpInjector } from "../lib/mcp-injector";
 import {
   endLiveSession,
   heartbeatLiveSession,
@@ -521,7 +520,6 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
     endSessionTracking("manual_disconnect");
     cleanupMedia();
     resetPlayback();
-    mcpInjector.disconnect();
 
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -541,21 +539,12 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
       try {
         setStatus("connecting");
         manualDisconnectRef.current = false;
-        try {
-          await mcpInjector.connect();
-        } catch {
-          // MCP unavailable — call continues without tools
-        }
         await initAudio();
         await startStreaming();
 
         const tools: any[] = [];
         if (personaConfig.enableGoogleSearch && consentGoogleSearchRef.current) {
           tools.push({ googleSearch: {} });
-        }
-        const mcpTools = mcpInjector.getGeminiTools(personaConfig.enabledMcpTools);
-        if (mcpTools.length > 0) {
-          tools.push({ functionDeclarations: mcpTools });
         }
 
         const tokenRes = await fetch('/api/session-token', { method: 'POST' });
@@ -635,48 +624,6 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 }
               }
 
-              const toolCall = (message as any).toolCall;
-              if (toolCall?.functionCalls?.length) {
-                for (const fc of toolCall.functionCalls) {
-                  const { id: callId, name, args } = fc;
-                  if (!name) continue;
-                  try {
-                    const result = await mcpInjector.executeTool(name, args);
-
-                    if (result && typeof result.text === "string") {
-                      try {
-                        const parsed = JSON.parse(result.text.trim());
-                        const imageUrl = parsed?.img_url ?? (Array.isArray(parsed?.output) ? parsed.output[0] : null);
-                        if (imageUrl && typeof imageUrl === "string") {
-                          setGeneratedImage(imageUrl);
-                        }
-                      } catch {
-                        // result.text was not JSON — not an image response
-                      }
-                    }
-
-                    sessionRef.current?.sendToolResponse({
-                      functionResponses: [
-                        {
-                          id: callId,
-                          name,
-                          response: { result },
-                        },
-                      ],
-                    });
-                  } catch (error: any) {
-                    sessionRef.current?.sendToolResponse({
-                      functionResponses: [
-                        {
-                          id: callId,
-                          name,
-                          response: { error: error.message },
-                        },
-                      ],
-                    });
-                  }
-                }
-              }
             },
             onclose: () => {
               isSessionOpenRef.current = false;
