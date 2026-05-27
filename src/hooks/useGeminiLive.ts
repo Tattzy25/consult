@@ -773,32 +773,78 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                     child_sexual_content: "Session ended: content involving minors is not permitted.",
                     sexual_act_non_tattoo: "Session ended: content outside of tattoo consultation is not permitted.",
                   };
+                  void zohoLog({
+                    source_id: "disconnect_session",
+                    customer_id: customerIdRef.current ?? '',
+                    error: reason,
+                    success: "",
+                    timestamp: new Date().toISOString(),
+                    session_start_time: sessionStartTimeRef.current ?? "",
+                    session_end_time: new Date().toISOString(),
+                    fail_credit_refund: "",
+                    session_summary: "",
+                  });
                   toast.error(messages[reason] ?? "Session ended by TaTTTy.");
-                  manualDisconnectRef.current = true;
-                  sessionRef.current?.close();
+                  disconnect();
                   return;
                 }
 
-                const res = await fetch(SERVICE_CONFIG.difyMcp, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, type/event-stream' },
-                  body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: Date.now(),
-                    method: 'tools/call',
-                    params: { name: fc.name, arguments: fc.args },
-                  }),
-                });
-                const data = await res.json();
-                const resultText = data.result?.content?.[0]?.text;
-                const parsed = JSON.parse(resultText);
-                if (parsed?.image_url) setGeneratedImage(parsed.image_url);
+                let toolResult: unknown = { error: 'tool call failed' };
+                let errorStr = '';
+
+                try {
+                  const res = await fetch(SERVICE_CONFIG.difyMcp, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
+                    body: JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: Date.now(),
+                      method: 'tools/call',
+                      params: { name: fc.name, arguments: fc.args },
+                    }),
+                  });
+
+                  if (!res.ok) {
+                    errorStr = `HTTP ${res.status}`;
+                    toolResult = { error: errorStr };
+                  } else {
+                    let data: Record<string, unknown> | null = null;
+                    try {
+                      data = await res.json() as Record<string, unknown>;
+                    } catch {
+                      errorStr = 'invalid JSON response';
+                      toolResult = { error: errorStr };
+                    }
+                    if (data !== null) {
+                      if (data.error) {
+                        errorStr = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+                        toolResult = { error: errorStr };
+                      } else {
+                        const resultText = (data.result as any)?.content?.[0]?.text;
+                        if (resultText) {
+                          try {
+                            const parsed = JSON.parse(resultText) as Record<string, unknown>;
+                            if (parsed?.image_url) setGeneratedImage(parsed.image_url as string);
+                            toolResult = parsed;
+                          } catch {
+                            toolResult = { text: resultText };
+                          }
+                        } else {
+                          toolResult = data.result ?? {};
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  errorStr = e instanceof Error ? e.message : 'fetch failed';
+                  toolResult = { error: errorStr };
+                }
 
                 void zohoLog({
                   source_id: 'facetime_4000',
                   customer_id: (fc.args as any).customer_id ?? '',
-                  error: data.error ? JSON.stringify(data.error) : '',
-                  success: data.error ? '' : '200',
+                  error: errorStr,
+                  success: errorStr ? '' : '200',
                   timestamp: new Date().toISOString(),
                   session_start_time: sessionStartTimeRef.current ?? '',
                   session_end_time: '',
@@ -807,7 +853,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 });
 
                 sessionRef.current?.sendToolResponse({
-                  functionResponses: [{ id: fc.id, name: fc.name, response: parsed }],
+                  functionResponses: [{ id: fc.id, name: fc.name, response: toolResult }],
                 });
               }
             }
@@ -926,6 +972,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
     [
       beginSessionTracking,
       cleanupMedia,
+      disconnect,
       endSessionTracking,
       enqueueOutputPCM,
       initAudio,

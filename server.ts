@@ -11,7 +11,12 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.post('/api/session-token', (req, res) => {
-  res.status(200).json({ token: process.env.GEMINI_API_KEY ?? '' });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+    return;
+  }
+  res.status(200).json({ token: apiKey });
 });
 
 app.listen(PORT, () => {
