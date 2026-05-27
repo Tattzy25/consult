@@ -538,23 +538,22 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
 
   const startConnection = useCallback(
     async (selectedVoice: string) => {
-      try {
-        setStatus("connecting");
-        manualDisconnectRef.current = false;
-        await initAudio();
-        await startStreaming();
+      setStatus("connecting");
+      manualDisconnectRef.current = false;
+      await initAudio();
+      await startStreaming();
 
-        const tools: any[] = [{ functionDeclarations: [facetimeTool] }];
-        if (personaConfig.enableGoogleSearch && consentGoogleSearchRef.current) {
-          tools.push({ googleSearch: {} });
-        }
+      const tools: any[] = [{ functionDeclarations: [facetimeTool] }];
+      if (personaConfig.enableGoogleSearch && consentGoogleSearchRef.current) {
+        tools.push({ googleSearch: {} });
+      }
 
-        const tokenRes = await fetch('/api/session-token', { method: 'POST' });
-        const { token: ephemeralToken, error: tokenError } = await tokenRes.json();
-        if (!ephemeralToken) throw new Error(tokenError || 'Failed to get session token');
-        const ai = new GoogleGenAI({ apiKey: ephemeralToken, httpOptions: { apiVersion: 'v1alpha' } });
+      const tokenRes = await fetch('/api/session-token', { method: 'POST' });
+      const { token: ephemeralToken } = await tokenRes.json();
+      if (!ephemeralToken) throw new Error('No token in session-token response');
+      const ai = new GoogleGenAI({ apiKey: ephemeralToken, httpOptions: { apiVersion: 'v1alpha' } });
 
-        const model = personaConfig.model || "gemini-3.1-flash-live-preview";
+      const model = personaConfig.model!;
 
         const session = await ai.live.connect({
           model,
@@ -612,8 +611,8 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                 }
               }
 
-              const parts = message.serverContent?.modelTurn?.parts ?? [];
-              for (const part of parts) {
+              const parts = message.serverContent?.modelTurn?.parts;
+              if (parts) for (const part of parts) {
                 if (part.inlineData?.data) {
                   const pcm = base64ToPCM16(part.inlineData.data);
                   enqueueOutputPCM(pcm);
@@ -656,7 +655,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                             worksheet_name: 'Sheet1',
                             json_data: [{
                               source_id: fc.name,
-                              customer_id: (fc.args as any)?.customer_id ?? '',
+                              customer_id: (fc.args as any).customer_id,
                               error: data.error ? JSON.stringify(data.error) : '',
                               success: data.error ? '' : '200',
                               timestamps: new Date().toISOString(),
@@ -668,7 +667,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                   });
 
                   sessionRef.current?.sendToolResponse({
-                    functionResponses: [{ id: fc.id, name: fc.name, response: data.result ?? data }],
+                    functionResponses: [{ id: fc.id, name: fc.name, response: data.result }],
                   });
                 }
               }
@@ -708,21 +707,6 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
         });
 
         sessionRef.current = session;
-      } catch (err) {
-        isSessionOpenRef.current = false;
-        cleanupMedia();
-        resetPlayback();
-        sessionRef.current = null;
-        setStatus("error");
-        setIsConnected(false);
-        setSessionDurationMs(0);
-        manualDisconnectRef.current = false;
-        toast.error(
-          err instanceof Error
-            ? err.message
-            : "Failed to start the live session",
-        );
-      }
     },
     [
       beginSessionTracking,
