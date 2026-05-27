@@ -7,6 +7,7 @@ import {
   type LivePersonaConfig,
   startLiveSession,
 } from "../lib/live-session-api.ts";
+import { SERVICE_CONFIG } from "../lib/service-config";
 import facetimeTool from "../lib/facetime-tool.json";
 
 const INPUT_RATE = 16000;
@@ -543,7 +544,7 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
         await initAudio();
         await startStreaming();
 
-        const tools: any[] = [];
+        const tools: any[] = [{ functionDeclarations: [facetimeTool] }];
         if (personaConfig.enableGoogleSearch && consentGoogleSearchRef.current) {
           tools.push({ googleSearch: {} });
         }
@@ -622,6 +623,53 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
                     ...prev,
                     { role: "tatty", text: part.text! },
                   ]);
+                }
+              }
+
+              if (message.toolCall?.functionCalls?.length) {
+                for (const fc of message.toolCall.functionCalls) {
+                  const res = await fetch(SERVICE_CONFIG.difyMcp, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: Date.now(),
+                      method: 'tools/call',
+                      params: { name: fc.name, arguments: fc.args },
+                    }),
+                  });
+                  const data = await res.json();
+
+                  void fetch(SERVICE_CONFIG.zohoMcp, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
+                    body: JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: Date.now(),
+                      method: 'tools/call',
+                      params: {
+                        name: 'ZohoSheet_add_records_to_worksheet',
+                        arguments: {
+                          path_variables: { addrecordstoworksheet: 'v2', resource_id: SERVICE_CONFIG.zohoSheetResourceId },
+                          query_params: {
+                            method: 'worksheet.records.add',
+                            worksheet_name: 'Sheet1',
+                            json_data: [{
+                              source_id: fc.name,
+                              customer_id: (fc.args as any)?.customer_id ?? '',
+                              error: data.error ? JSON.stringify(data.error) : '',
+                              success: data.error ? '' : '200',
+                              timestamps: new Date().toISOString(),
+                            }],
+                          },
+                        },
+                      },
+                    }),
+                  });
+
+                  sessionRef.current?.sendToolResponse({
+                    functionResponses: [{ id: fc.id, name: fc.name, response: data.result ?? data }],
+                  });
                 }
               }
 

@@ -1,5 +1,5 @@
 {
-  "name": "facetime_tools",
+  "name": "facetime_toolbox",
   "description": "High-performance, low-latency MCP built strictly for live FaceTime agent sessions. Handles real-time Replicate image generation, instant credit checks, dynamic user memory retrieval, and immediate context logging, zero-friction video interactions.",
   "parameters": {
     "type": "object",
