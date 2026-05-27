@@ -1,3 +1,5 @@
+import { MCP_ENDPOINTS } from "./mcp-config";
+
 type McpTool = {
   name: string;
   description?: string;
@@ -35,8 +37,7 @@ export const mcpInjector = {
     toolEndpointMap.clear();
     cachedGeminiTools = [];
 
-    const urls = (import.meta.env.VITE_MCP_ENDPOINTS as string)
-      .split(",").map((u: string) => u.trim()).filter(Boolean);
+    const urls = MCP_ENDPOINTS;
 
     const results = await Promise.allSettled(
       urls.map(async (url) => {
@@ -47,8 +48,8 @@ export const mcpInjector = {
         }
       }),
     );
-    results.forEach((r, i) => {
-      if (r.status === "rejected") console.warn(`MCP endpoint failed: ${urls[i]}`, r.reason);
+    results.forEach((r: PromiseSettledResult<void>, i: number) => {
+      if (r.status === "rejected") console.warn(`MCP endpoint failed: ${urls[i]}`, (r as PromiseRejectedResult).reason);
     });
   },
 
