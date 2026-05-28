@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "start": "npm run build && tsx server.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -51,3 +52,4 @@
     "typescript": "~6.0.2"
   }
 }
+
