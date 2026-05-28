@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "npm run build && tsx server.ts"
+    "start": "pnpm build && tsx server.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
