@@ -558,9 +558,21 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
           tools.push({ functionDeclarations: mcpTools });
         }
 
-        const tokenRes = await fetch('/api/session-token', { method: 'POST' });
-        const { token: ephemeralToken, error: tokenError } = await tokenRes.json();
-        if (!ephemeralToken) throw new Error(tokenError || 'Failed to get session token');
+        let ephemeralToken: string;
+        try {
+          const tokenRes = await fetch('/api/session-token', { method: 'POST' });
+          const tokenData = await tokenRes.json();
+          if (!tokenRes.ok || !tokenData.token) {
+            const msg = tokenData.error || `Token request failed (HTTP ${tokenRes.status})`;
+            console.error('[useGeminiLive] Token fetch error:', msg);
+            throw new Error(msg);
+          }
+          ephemeralToken = tokenData.token;
+        } catch (tokenErr) {
+          const msg = tokenErr instanceof Error ? tokenErr.message : 'Failed to get session token';
+          console.error('[useGeminiLive] Could not obtain ephemeral token:', msg);
+          throw new Error(msg);
+        }
         const ai = new GoogleGenAI({ apiKey: ephemeralToken, httpOptions: { apiVersion: 'v1alpha' } });
 
         const model = personaConfig.model || "gemini-3.1-flash-live-preview";
