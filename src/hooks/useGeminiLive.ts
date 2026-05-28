@@ -558,7 +558,10 @@ export function useGeminiLive(personaConfig: LivePersonaConfig) {
           tools.push({ functionDeclarations: mcpTools });
         }
 
-        const tokenRes = await fetch('/api/session-token', { method: 'POST' });
+        const sessionTokenUrl = import.meta.env.VITE_API_URL
+          ? `${import.meta.env.VITE_API_URL}/api/session-token`
+          : '/api/session-token';
+        const tokenRes = await fetch(sessionTokenUrl, { method: 'POST' });
         const { token: ephemeralToken, error: tokenError } = await tokenRes.json();
         if (!ephemeralToken) throw new Error(tokenError || 'Failed to get session token');
         const ai = new GoogleGenAI({ apiKey: ephemeralToken, httpOptions: { apiVersion: 'v1alpha' } });
