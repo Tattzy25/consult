@@ -158,12 +158,20 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const container = containerRef.current;
+
+    if (rendererRef.current) return;
+
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
     // Scene setup
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
     // Safely calculate aspect ratio to prevent NaN on initial layout
     const aspect = width > 0 && height > 0 ? width / height : 1;
 
@@ -177,7 +185,7 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
       renderer.setSize(width, height);
     }
     renderer.setPixelRatio(window.devicePixelRatio);
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     // Geometry & Material
@@ -197,6 +205,7 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
     materialRef.current = material;
 
     const sphere = new THREE.Mesh(geometry, material);
+    sphere.scale.set(0.8, 0.8, 0.8);
     scene.add(sphere);
 
     // Animation loop
@@ -239,18 +248,25 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
       rendererRef.current.setSize(w, h);
     });
     
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(container);
 
     return () => {
       resizeObserver.disconnect();
       cancelAnimationFrame(frameIdRef.current);
-      if (containerRef.current && renderer.domElement) {
-        containerRef.current.removeChild(renderer.domElement);
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
       }
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      materialRef.current = null;
+      frameIdRef.current = 0;
     };
   }, []);
 
-  return <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-auto" />;};
+  return <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none" />;
+};
