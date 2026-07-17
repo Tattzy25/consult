@@ -44,8 +44,8 @@
 
 body {
   margin: 0;
-  background: var(--commerce-surface);
-  color: var(--commerce-text);
+  background: #000000;
+  color: #f2f2f2;
 }
 
 /* Permanent right-side screen — NOT a floating bubble */
@@ -61,7 +61,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--commerce-surface);
+  background: #000000;
   border-left: 1px solid var(--commerce-border);
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -90,7 +90,7 @@ body {
   gap: 12px;
   overflow-y: auto;
   padding: 16px;
-  background: var(--commerce-surface);
+  background: #000000;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }

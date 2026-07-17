@@ -309,7 +309,7 @@ export default function App() {
           <div className="h-1 w-10 rounded-full bg-white/30" />
         </div>
 
-        <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-2xl border-t border-white/10 bg-zinc-900/30 md:m-4 md:h-[85%] md:flex-initial md:w-1/2 md:self-center md:border-l md:border-t-0">
+        <div className="m-4 min-h-0 flex-1 overflow-hidden rounded-2xl border-2 border-[#00c1ec] bg-black md:m-4 md:h-[85%] md:flex-initial md:w-1/2 md:self-center">
           <iframe
             ref={commercePanelRef}
             src="/commerce-display/index.html"
