@@ -141,7 +141,24 @@
   function normalizeProduct(product) {
     const item = product && typeof product === 'object' ? product : {};
 
+    // UCP shape: variant-level id/seller/url/checkout live in variants[0], not flat on the product.
+    const variant =
+      Array.isArray(item.variants) && item.variants.length > 0
+        ? item.variants[0]
+        : null;
+
+    // UCP shape: media is an array of { type: "image", url, alt_text }, on the
+    // variant and/or the product. Confirmed from a real catalog_search response.
+    const variantMedia =
+      Array.isArray(variant?.media) && variant.media.length > 0
+        ? variant.media[0]
+        : null;
+    const productMedia =
+      Array.isArray(item.media) && item.media.length > 0 ? item.media[0] : null;
+
     const image =
+      variantMedia?.url ||
+      productMedia?.url ||
       item.image_url ||
       item.imageUrl ||
       item.image ||
@@ -150,16 +167,39 @@
       item.thumbnail ||
       '';
 
-    const money =
-      item.price ||
-      item.price_text ||
-      item.priceText ||
-      item.price_range ||
-      item.priceRange ||
-      item.amount ||
-      '';
+    const imageAlt = variantMedia?.alt_text || productMedia?.alt_text || '';
+
+    // UCP: variant.price = { amount, currency } is the exact price for this
+    // variant. price_range.min is only the product-wide min/max fallback.
+    const variantPrice =
+      variant?.price && typeof variant.price === 'object' ? variant.price : null;
+    const priceRangeObj =
+      (item.price_range && typeof item.price_range === 'object' && item.price_range) ||
+      (item.priceRange && typeof item.priceRange === 'object' && item.priceRange) ||
+      null;
+    const minorAmount = variantPrice?.amount ?? priceRangeObj?.min?.amount;
+    const priceCurrency = variantPrice?.currency ?? priceRangeObj?.min?.currency;
+
+    let formattedPrice = '';
+
+    if (typeof minorAmount === 'number' && priceCurrency) {
+      formattedPrice = `${(minorAmount / 100).toFixed(2)} ${priceCurrency}`;
+    } else {
+      const money =
+        item.price ||
+        item.price_text ||
+        item.priceText ||
+        item.amount ||
+        '';
+      formattedPrice = typeof money === 'string' ? money : '';
+    }
+
+    const variantId = String(
+      variant?.id || item.variant_id || item.variantId || '',
+    );
 
     const url =
+      variant?.url ||
       item.url ||
       item.product_url ||
       item.productUrl ||
@@ -167,20 +207,24 @@
       item.handleUrl ||
       '';
 
+    const checkoutUrl = variant?.checkout_url || item.checkout_url || item.checkoutUrl || '';
+
     return {
       ...item,
       id: String(
         item.id ||
           item.product_id ||
           item.productId ||
-          item.variant_id ||
-          item.variantId ||
+          variantId ||
           '',
       ),
+      variant_id: variantId,
       title: String(item.title || item.name || item.product_title || 'Product'),
       image_url: typeof image === 'string' ? image : '',
-      price: typeof money === 'string' ? money : String(money || ''),
+      image_alt: typeof imageAlt === 'string' ? imageAlt : '',
+      price: formattedPrice,
       url: typeof url === 'string' ? url : '',
+      checkout_url: typeof checkoutUrl === 'string' ? checkoutUrl : '',
     };
   }
 
@@ -195,7 +239,7 @@
     image.src =
       product.image_url ||
       'https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png';
-    image.alt = product.title;
+    image.alt = product.image_alt || product.title;
     image.loading = 'lazy';
 
     image.onerror = function () {
@@ -411,6 +455,11 @@
     for (const child of Object.values(current)) {
       if (child && typeof child === 'object') {
         collectProducts(child, found);
+      } else if (typeof child === 'string') {
+        const parsedChild = parseJsonString(child);
+        if (parsedChild && typeof parsedChild === 'object') {
+          collectProducts(parsedChild, found);
+        }
       }
     }
   }
