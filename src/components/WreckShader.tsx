@@ -273,15 +273,6 @@ export const WreckShader: React.FC<WreckShaderProps> = ({ audioLevel, visualMode
       <div style={{ flex: 1, position: 'relative' }}>
         <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none" />
       </div>
-      <div style={{ flex: 1, backgroundColor: '#000000' }}>
-        <iframe
-          title="panel"
-          src="https://folderfable-5.vercel.app/"
-          style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
-          allow="autoplay"
-          sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation"
-        />
-      </div>
     </div>
   );
-};
+};  
