@@ -1,80 +1,280 @@
 import { Type } from "@google/genai";
 
-// Updated to the exact profile URL used in your successful JSON-RPC test payload
-export const UCP_AGENT_PROFILE_URL = "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json";
+export const UCP_AGENT_PROFILE_URL =
+  "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json";
 
-/**
- * GEMINI 3.1 FUNCTION DECLARATIONS
- * These follow the exact schema required by the Gemini Live / Interactions API.
- */
 export const LIVE_FUNCTION_DECLARATIONS = [
   {
-    name: "shopify_ucp_call",
-    description: "Directly interacts with the Shopify UCP MCP to search catalogs, manage carts, and handle checkouts for the current merchant store.",
+    name: "search_catalog",
+    description:
+      "Search a merchant's UCP catalog. Returns products, prices, images, and checkout URLs.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        tool: {
-          type: Type.STRING,
-          description: 'The specific UCP MCP tool name. Examples: "search_catalog", "update_cart", "create_checkout".',
-        },
         store_domain: {
           type: Type.STRING,
-          description: "The shopify domain for the merchant (e.g., 'tattty.myshopify.com').",
+          description:
+            "The Shopify store domain to query, e.g. 'tattty.myshopify.com'.",
         },
         arguments: {
           type: Type.OBJECT,
-          description: "The strict nested arguments structure required by the UCP protocol.",
+          description: "UCP search_catalog arguments.",
           properties: {
             catalog: {
               type: Type.OBJECT,
-              description: "Include this object ONLY when the tool is 'search_catalog'.",
               properties: {
-                query: { 
-                  type: Type.STRING, 
-                  description: "The user's search term (e.g., 'wolf', 'lion', 'numbing cream')." 
-                }
+                query: { type: Type.STRING },
+                filters: { type: Type.OBJECT },
+                pagination: { type: Type.OBJECT },
               },
-              required: ["query"]
+              required: ["query"],
             },
+            context: { type: Type.OBJECT },
+          },
+          required: ["catalog"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "get_product",
+    description:
+      "Get full variant matrix and availability for a specific UCP product ID.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: {
+          type: Type.STRING,
+          description: "The Shopify store domain.",
+        },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            product: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+              },
+              required: ["id"],
+            },
+            context: { type: Type.OBJECT },
+          },
+          required: ["product"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "create_cart",
+    description:
+      "Create a new UCP cart with line items on a specific merchant.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
             cart: {
               type: Type.OBJECT,
-              description: "Include this object for cart and item updates.",
               properties: {
-                lines: {
+                line_items: {
                   type: Type.ARRAY,
-                  description: "The array of product variants being modified.",
                   items: {
                     type: Type.OBJECT,
                     properties: {
-                      merchandiseId: { 
-                        type: Type.STRING, 
-                        description: "The full variant GID (e.g., 'gid://shopify/ProductVariant/12345')." 
+                      item: {
+                        type: Type.OBJECT,
+                        properties: { id: { type: Type.STRING } },
+                        required: ["id"],
                       },
-                      quantity: { type: Type.INTEGER }
+                      quantity: { type: Type.INTEGER },
                     },
-                    required: ["merchandiseId", "quantity"]
-                  }
-                }
-              }
-            }
-          }
-        }
+                    required: ["item", "quantity"],
+                  },
+                },
+                context: { type: Type.OBJECT },
+              },
+              required: ["line_items"],
+            },
+          },
+          required: ["cart"],
+        },
       },
-      required: ["tool", "arguments", "store_domain"],
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "update_cart",
+    description:
+      "Update an existing UCP cart (full replace of line_items).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            cart: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                line_items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      item: {
+                        type: Type.OBJECT,
+                        properties: { id: { type: Type.STRING } },
+                        required: ["id"],
+                      },
+                      quantity: { type: Type.INTEGER },
+                    },
+                    required: ["item", "quantity"],
+                  },
+                },
+                context: { type: Type.OBJECT },
+                destination: { type: Type.OBJECT },
+                fulfillment: { type: Type.OBJECT },
+              },
+              required: ["id", "line_items"],
+            },
+          },
+          required: ["cart"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "create_checkout",
+    description:
+      "Create a checkout from a cart or directly from line items.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            checkout: {
+              type: Type.OBJECT,
+              properties: {
+                cart_id: { type: Type.STRING },
+                line_items: {
+                  type: Type.ARRAY,
+                  items: { type: Type.OBJECT },
+                },
+                context: { type: Type.OBJECT },
+              },
+            },
+          },
+          required: ["checkout"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "update_checkout",
+    description:
+      "Update a checkout with shipping, billing, fulfillment, or payment selections.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            checkout: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                line_items: {
+                  type: Type.ARRAY,
+                  items: { type: Type.OBJECT },
+                },
+                fulfillment: { type: Type.OBJECT },
+                payment: { type: Type.OBJECT },
+                context: { type: Type.OBJECT },
+              },
+              required: ["id"],
+            },
+          },
+          required: ["checkout"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "complete_checkout",
+    description:
+      "Complete a checkout and place the order.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            checkout: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                payment: { type: Type.OBJECT },
+                signals: { type: Type.OBJECT },
+              },
+              required: ["id"],
+            },
+          },
+          required: ["checkout"],
+        },
+      },
+      required: ["store_domain", "arguments"],
+    },
+  },
+
+  {
+    name: "get_order",
+    description:
+      "Track an existing order by order ID.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        store_domain: { type: Type.STRING },
+        arguments: {
+          type: Type.OBJECT,
+          properties: {
+            order: {
+              type: Type.OBJECT,
+              properties: { id: { type: Type.STRING } },
+              required: ["id"],
+            },
+          },
+          required: ["order"],
+        },
+      },
+      required: ["store_domain", "arguments"],
     },
   },
 ] as const;
 
-/**
- * The actual execution logic for the MCP Call
- */
 export async function executeMcpCall(args: any) {
-  const { tool, arguments: ucpArgs, store_domain } = args;
+  const { tool, store_domain, arguments: ucpArguments = {} } = args;
 
-  if (!store_domain) throw new Error("Missing store_domain for MCP call");
-  
-  // Construct the dynamic endpoint based on the merchant store
+  if (!tool) throw new Error("Missing UCP tool name");
+  if (!store_domain) throw new Error("Missing store_domain for UCP call");
+
   const dynamicMcpUrl = `https://${store_domain}/api/ucp/mcp`;
 
   const payload = {
@@ -89,18 +289,26 @@ export async function executeMcpCall(args: any) {
             profile: UCP_AGENT_PROFILE_URL,
           },
         },
-        ...ucpArgs,
+        ...ucpArguments,
       },
     },
   };
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "MCP-Protocol-Version": "2026-03-26",
+  };
+
+  const token =
+    import.meta.env?.VITE_UCP_ACCESS_TOKEN ||
+    (typeof process !== "undefined" ? process.env?.UCP_ACCESS_TOKEN : "") ||
+    "";
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(dynamicMcpUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // Pull token from env or session
-      "Authorization": `Bearer ${import.meta.env.VITE_UCP_ACCESS_TOKEN || ''}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 

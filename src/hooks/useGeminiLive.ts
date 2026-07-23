@@ -18,7 +18,7 @@ type LiveSystemMessageSettings = {
   enableGoogleSearch?: boolean;
   enabledMcpTools?: string[];
   responseModality?: "AUDIO" | "TEXT";
-  defaultStoreDomain?: string; // Added this to handle the dynamic store routing
+  onMcpResult?: (result: any) => void; // THE BRIDGE: The callback that talks to the widget
 };
 
 type TranscriptItem = { role: "user" | "model"; text: string };
@@ -38,28 +38,6 @@ function base64ToPCM16(base64: string): Int16Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Int16Array(bytes.buffer);
-}
-
-type CommercePanelRenderEvent = {
-  channel: 'commerce-panel';
-  type:
-    | 'clear'
-    | 'tool'
-    | 'products'
-    | 'button'
-    | 'buttons'
-    | 'checkout'
-    | 'mcp_result'
-    | 'loading';
-  [key: string]: unknown;
-};
-
-function renderCommercePanel(event: CommercePanelRenderEvent) {
-  window.dispatchEvent(
-    new CustomEvent<CommercePanelRenderEvent>('commerce-panel-render', {
-      detail: event,
-    }),
-  );
 }
 
 export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) {
@@ -355,33 +333,20 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
             onmessage: async (message: LiveServerMessage) => {
               if (message.serverContent?.interrupted) resetPlayback();
 
-              // --- THE DYNAMIC TOOL CALL ENGINE ---
               const toolCalls = (message as any)?.toolCall?.functionCalls ?? [];
               if (toolCalls.length > 0 && sessionRef.current) {
                 const functionResponses = await Promise.all(toolCalls.map(async (call: any) => {
                   if (call.name === 'shopify_ucp_call') {
                     try {
-                      // Inject dynamic store domain if model didn't provide one
                       const args = { 
                         ...call.arguments, 
-                        store_domain: call.arguments.store_domain || systemMessageSettings.defaultStoreDomain 
+                        store_domain: call.arguments.store_domain || systemMessageSettings
                       };
-                      renderCommercePanel({
-                        channel: 'commerce-panel',
-                        type: 'tool',
-                        name: String(call.arguments.tool || 'commerce tool'),
-                        args: call.arguments.arguments || {},
-                        state: 'running',
-                      });
 
                       const result = await executeMcpCall(args);
 
-                      renderCommercePanel({
-                        channel: 'commerce-panel',
-                        type: 'mcp_result',
-                        tool: String(call.arguments.tool || 'commerce tool'),
-                        result,
-                      });
+                      // RELAY TO WIDGET: The agent's result is passed to the bridge
+                      systemMessageSettings.onMcpResult?.(result);
 
                       return { id: call.id, name: call.name, response: result };
                     } catch (e: any) {

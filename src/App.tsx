@@ -15,6 +15,9 @@ import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
+  
+  // 1. THE TARGET: Ref to the iframe containing the dummy component
+  const productIframeRef = useRef<HTMLIFrameElement>(null);
 
   const {
     isConnected,
@@ -30,7 +33,31 @@ export default function App() {
     disconnect,
     toggleMute,
     flipCamera,
-  } = useGeminiLive(SYSTEM_MESSAGE_SETTINGS);
+  } = useGeminiLive({
+    ...SYSTEM_MESSAGE_SETTINGS,
+    // 2. THE BRIDGE: When the agent gets a UCP result, pipe it to the widget
+    onMcpResult: (payload) => {
+      if (productIframeRef.current) {
+        productIframeRef.current.contentWindow?.postMessage(payload, '*');
+      }
+    },
+  });
+
+  // 3. THE RELAY: Listen for clicks inside the widget and tell the Agent
+  useEffect(() => {
+    const handleWidgetInteraction = (event: MessageEvent) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      
+      // We take whatever the widget sends and dispatch it as a 
+      // commerce-panel-action so the useGeminiLive hook hears it.
+      window.dispatchEvent(
+        new CustomEvent('commerce-panel-action', { detail: event.data })
+      );
+    };
+
+    window.addEventListener('message', handleWidgetInteraction);
+    return () => window.removeEventListener('message', handleWidgetInteraction);
+  }, []);
 
   useEffect(() => {
     if (status === 'connecting') {
@@ -61,7 +88,7 @@ export default function App() {
         >
           <div className="pointer-events-none absolute inset-0 z-0">
             <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
-          </div>
+          </div >
 
           <ConnectingOverlay show={status === 'connecting'} />
 
@@ -78,7 +105,27 @@ export default function App() {
               stageRef={stageRef}
               onFlip={flipCamera}
             />
-          </div>
+          </div >
+
+          {/* 4. THE MANIFESTO WINDOW: The 400x500 terminal */}
+          <AnimatePresence>
+            {isConnected && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="pointer-events-auto absolute bottom-24 right-4 z-30 overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
+                style={{ width: '400px', height: '500px' }}
+              >
+                <iframe
+                  ref={productIframeRef}
+                  src="/widget.html"
+                  className="h-full w-full border-none"
+                  title="UCP Terminal"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence mode="wait">
             {!isConnected ? (
@@ -141,11 +188,11 @@ export default function App() {
                   >
                     <PhoneOff size={32} className="text-red-500" />
                   </button>
-                </div>
+                </div >
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </div >
       </main>
 
       <canvas
@@ -154,6 +201,6 @@ export default function App() {
         height={720}
         style={{ display: 'none' }}
       />
-    </div>
+    </div >
   );
 }
