@@ -331,55 +331,67 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               beginSessionTracking();
             },
             onmessage: async (message: LiveServerMessage) => {
-              if (message.serverContent?.interrupted) resetPlayback();
+  if (message.serverContent?.interrupted) resetPlayback();
 
-              const toolCalls = (message as any)?.toolCall?.functionCalls ?? [];
-              if (toolCalls.length > 0 && sessionRef.current) {
-                const functionResponses = await Promise.all(toolCalls.map(async (call: any) => {
-                  if (call.name === 'shopify_ucp_call') {
-                    try {
-                      const args = { 
-                        ...call.arguments, 
-                        store_domain: call.arguments.store_domain || systemMessageSettings
-                      };
+  const toolCalls = (message as any)?.toolCall?.functionCalls ?? [];
+  if (toolCalls.length > 0 && sessionRef.current) {
+    const functionResponses = await Promise.all(
+      toolCalls.map(async (call: any) => {
+        try {
+          const callArgs = call.args ?? call.arguments ?? {};
+const storeDomain =
+  callArgs.store_domain ||
+  (typeof systemMessageSettings === "string"
+    ? systemMessageSettings
+    : (systemMessageSettings as any)?.store_domain);
 
-                      const result = await executeMcpCall(args);
+          // Pass the dynamic tool name alongside all arguments to your executeMcpCall bridge
+          const args = {
+            tool: call.name,
+            ...callArgs,
+            store_domain: storeDomain,
+          };
 
-                      // RELAY TO WIDGET: The agent's result is passed to the bridge
-                      systemMessageSettings.onMcpResult?.(result);
+          const result = await executeMcpCall(args);
 
-                      return { id: call.id, name: call.name, response: result };
-                    } catch (e: any) {
-                      return { id: call.id, name: call.name, response: { error: e.message } };
-                    }
-                  }
-                  return { id: call.id, name: call.name, response: { error: `Unknown function: ${call.name}` } };
-                }));
-                sessionRef.current.sendToolResponse({ functionResponses });
-              }
+          return { id: call.id, name: call.name, response: result };
+        } catch (e: any) {
+          console.error(`MCP Call failed for ${call.name}:`, e);
+          return {
+            id: call.id,
+            name: call.name,
+            response: { error: e.message },
+          };
+        }
+      })
+    );
 
-              if ((message as any).sessionResumptionUpdate?.newHandle) {
-                resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
-              }
+    // Return the function responses straight back into the Gemini live session
+    sessionRef.current.sendToolResponse({ functionResponses });
+  }
 
-              if (consentTranscriptionRef.current) {
-                const inputTranscript = message.serverContent?.inputTranscription?.text;
-                if (inputTranscript) setTranscript(prev => [...prev, { role: "user", text: inputTranscript }]);
-                const outputTranscript = message.serverContent?.outputTranscription?.text;
-                if (outputTranscript) setTranscript(prev => [...prev, { role: "model", text: outputTranscript }]);
-              }
+  if ((message as any).sessionResumptionUpdate?.newHandle) {
+    resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
+  }
 
-              const parts = message.serverContent?.modelTurn?.parts ?? [];
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  const pcm = base64ToPCM16(part.inlineData.data);
-                  enqueueOutputPCM(pcm);
-                }
-                if (part.text && consentTranscriptionRef.current) {
-                  setTranscript(prev => [...prev, { role: "model", text: part.text! }]);
-                }
-              }
-            },
+  if (consentTranscriptionRef.current) {
+    const inputTranscript = message.serverContent?.inputTranscription?.text;
+    if (inputTranscript) setTranscript(prev => [...prev, { role: "user", text: inputTranscript }]);
+    const outputTranscript = message.serverContent?.outputTranscription?.text;
+    if (outputTranscript) setTranscript(prev => [...prev, { role: "model", text: outputTranscript }]);
+  }
+
+  const parts = message.serverContent?.modelTurn?.parts ?? [];
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      const pcm = base64ToPCM16(part.inlineData.data);
+      enqueueOutputPCM(pcm);
+    }
+    if (part.text && consentTranscriptionRef.current) {
+      setTranscript(prev => [...prev, { role: "model", text: part.text! }]);
+    }
+  }
+},
             onclose: () => {
               isSessionOpenRef.current = false;
               resumptionHandleRef.current = null;
