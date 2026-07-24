@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
@@ -9,7 +10,7 @@ import {
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
-const OUTPUT_PREBUFFER_SAMPLES = 2400; 
+const OUTPUT_PREBUFFER_SAMPLES = 2400;
 const VIDEO_INTERVAL_MS = 500;
 
 type LiveSystemMessageSettings = {
@@ -18,7 +19,7 @@ type LiveSystemMessageSettings = {
   enableGoogleSearch?: boolean;
   enabledMcpTools?: string[];
   responseModality?: "AUDIO" | "TEXT";
-  onMcpResult?: (result: any) => void; // THE BRIDGE: The callback that talks to the widget
+  onMcpResult?: (result: any) => void;
 };
 
 type TranscriptItem = { role: "user" | "model"; text: string };
@@ -38,6 +39,27 @@ function base64ToPCM16(base64: string): Int16Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Int16Array(bytes.buffer);
+}
+
+function extractRenderableProducts(result: any): any[] {
+  if (!result) return [];
+
+  if (Array.isArray(result?.products)) return result.products;
+  if (Array.isArray(result?.result?.products)) return result.result.products;
+  if (Array.isArray(result?.data?.products)) return result.data.products;
+  if (Array.isArray(result?.content)) {
+    for (const item of result.content) {
+      if (typeof item?.text !== "string") continue;
+      try {
+        const parsed = JSON.parse(item.text);
+        if (Array.isArray(parsed?.products)) return parsed.products;
+        if (Array.isArray(parsed?.result?.products)) return parsed.result.products;
+        if (Array.isArray(parsed?.cart?.lines)) return [];
+      } catch {}
+    }
+  }
+
+  return [];
 }
 
 export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) {
@@ -85,8 +107,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const resumptionHandleRef = useRef<string | null>(null);
   const consentGoogleSearchRef = useRef(false);
   const consentTranscriptionRef = useRef(false);
+  const latestProductsRef = useRef<any[]>([]);
+  const latestCartRef = useRef<any | null>(null);
 
-  // --- UTILITYS ---
   const setConsentGoogleSearch = useCallback((value: boolean) => {
     consentGoogleSearchRef.current = value;
     setConsentGoogleSearchState(value);
@@ -133,12 +156,18 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const cleanupMedia = useCallback(() => {
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     stopVideoCapture();
-    if (inputNodeRef.current) { inputNodeRef.current.disconnect(); inputNodeRef.current = null; }
+    if (inputNodeRef.current) {
+      inputNodeRef.current.disconnect();
+      inputNodeRef.current = null;
+    }
     if (outputNodeRef.current) outputNodeRef.current.disconnect();
     if (analyserRef.current) analyserRef.current.disconnect();
     if (audioSourceRef.current) audioSourceRef.current.disconnect();
     if (silentGainRef.current) silentGainRef.current.disconnect();
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
     setMicVolume(0);
     setIsUserTalking(false);
   }, [stopVideoCapture]);
@@ -206,7 +235,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     if (outputCtxRef.current.state === "suspended") await outputCtxRef.current.resume();
     if (!outputNodeRef.current) {
       outputNodeRef.current = new AudioWorkletNode(outputCtxRef.current, "gemini-output-worklet", {
-        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
       });
       outputNodeRef.current.connect(outputCtxRef.current.destination);
     }
@@ -218,7 +249,10 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       video: { facingMode: cameraFacingRef.current, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
     });
     streamRef.current = stream;
-    if (videoRef.current) { videoRef.current.srcObject = stream; void videoRef.current.play(); }
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      void videoRef.current.play();
+    }
     const inputCtx = inputCtxRef.current!;
     const source = inputCtx.createMediaStreamSource(stream);
     const analyser = inputCtx.createAnalyser();
@@ -229,15 +263,18 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     const updateVolume = () => {
       if (!analyserRef.current) return;
       analyserRef.current.getByteFrequencyData(dataArray);
-      let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-      const volume = Math.min(1, (sum / dataArray.length) / 128);
-      setMicVolume(prev => (Math.abs(prev - volume) < 0.02 ? prev : volume));
-      setIsUserTalking(prev => (prev && volume < 0.1 ? false : (!prev && volume >= 0.15 ? true : prev)));
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const volume = Math.min(1, sum / dataArray.length / 128);
+      setMicVolume((prev) => (Math.abs(prev - volume) < 0.02 ? prev : volume));
+      setIsUserTalking((prev) => (prev && volume < 0.1 ? false : !prev && volume >= 0.15 ? true : prev));
       rafIdRef.current = requestAnimationFrame(updateVolume);
     };
     updateVolume();
     const inputNode = new AudioWorkletNode(inputCtx, "gemini-input-worklet", {
-      numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1,
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 1,
       processorOptions: { targetSampleRate: INPUT_RATE, chunkSamples: 320 },
     });
     const silentGain = inputCtx.createGain();
@@ -261,14 +298,17 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     const nextFacing = cameraFacingRef.current === "user" ? "environment" : "user";
     cameraFacingRef.current = nextFacing;
     setCameraFacing(nextFacing);
-    streamRef.current.getVideoTracks().forEach(t => t.stop());
+    streamRef.current.getVideoTracks().forEach((t) => t.stop());
     const newStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
     });
     const newTrack = newStream.getVideoTracks()[0];
     if (!newTrack) return;
     streamRef.current.addTrack(newTrack);
-    if (videoRef.current) { videoRef.current.srcObject = streamRef.current; void videoRef.current.play(); }
+    if (videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play();
+    }
     if (isSessionOpenRef.current && isVideoEnabledRef.current) startVideoCapture();
   }, [startVideoCapture]);
 
@@ -276,6 +316,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     manualDisconnectRef.current = true;
     isSessionOpenRef.current = false;
     resumptionHandleRef.current = null;
+    latestProductsRef.current = [];
+    latestCartRef.current = null;
     endSessionTracking();
     cleanupMedia();
     resetPlayback();
@@ -335,26 +377,39 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               const toolCalls = (message as any)?.toolCall?.functionCalls ?? [];
               if (toolCalls.length > 0 && sessionRef.current) {
-                const functionResponses = await Promise.all(toolCalls.map(async (call: any) => {
-                  if (call.name === 'shopify_ucp_call') {
-                    try {
-                      const args = { 
-                        ...call.arguments, 
-                        store_domain: call.arguments.store_domain || systemMessageSettings
-                      };
+                const functionResponses = await Promise.all(
+                  toolCalls.map(async (call: any) => {
+                    if (call.name === "shopify_ucp_call") {
+                      try {
+                        const result = await executeMcpCall(call.arguments);
 
-                      const result = await executeMcpCall(args);
+                        const renderableProducts = extractRenderableProducts(result);
+                        if (renderableProducts.length > 0) {
+                          latestProductsRef.current = renderableProducts;
+                          systemMessageSettings.onMcpResult?.({ type: "render_products", products: renderableProducts, raw: result });
+                        } else {
+                          systemMessageSettings.onMcpResult?.(result);
+                        }
 
-                      // RELAY TO WIDGET: The agent's result is passed to the bridge
-                      systemMessageSettings.onMcpResult?.(result);
+                        if (result?.cart) latestCartRef.current = result.cart;
+                        if (Array.isArray(result?.content)) {
+                          for (const item of result.content) {
+                            if (typeof item?.text !== "string") continue;
+                            try {
+                              const parsed = JSON.parse(item.text);
+                              if (parsed?.cart) latestCartRef.current = parsed.cart;
+                            } catch {}
+                          }
+                        }
 
-                      return { id: call.id, name: call.name, response: result };
-                    } catch (e: any) {
-                      return { id: call.id, name: call.name, response: { error: e.message } };
+                        return { id: call.id, name: call.name, response: result };
+                      } catch (e: any) {
+                        return { id: call.id, name: call.name, response: { error: e.message } };
+                      }
                     }
-                  }
-                  return { id: call.id, name: call.name, response: { error: `Unknown function: ${call.name}` } };
-                }));
+                    return { id: call.id, name: call.name, response: { error: `Unknown function: ${call.name}` } };
+                  }),
+                );
                 sessionRef.current.sendToolResponse({ functionResponses });
               }
 
@@ -364,9 +419,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               if (consentTranscriptionRef.current) {
                 const inputTranscript = message.serverContent?.inputTranscription?.text;
-                if (inputTranscript) setTranscript(prev => [...prev, { role: "user", text: inputTranscript }]);
+                if (inputTranscript) setTranscript((prev) => [...prev, { role: "user", text: inputTranscript }]);
                 const outputTranscript = message.serverContent?.outputTranscription?.text;
-                if (outputTranscript) setTranscript(prev => [...prev, { role: "model", text: outputTranscript }]);
+                if (outputTranscript) setTranscript((prev) => [...prev, { role: "model", text: outputTranscript }]);
               }
 
               const parts = message.serverContent?.modelTurn?.parts ?? [];
@@ -376,7 +431,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
                   enqueueOutputPCM(pcm);
                 }
                 if (part.text && consentTranscriptionRef.current) {
-                  setTranscript(prev => [...prev, { role: "model", text: part.text! }]);
+                  setTranscript((prev) => [...prev, { role: "model", text: part.text! }]);
                 }
               }
             },
@@ -423,8 +478,13 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       }
     },
     [
-      beginSessionTracking, cleanupMedia, endSessionTracking,
-      enqueueOutputPCM, initAudio, resetPlayback, startStreaming,
+      beginSessionTracking,
+      cleanupMedia,
+      endSessionTracking,
+      enqueueOutputPCM,
+      initAudio,
+      resetPlayback,
+      startStreaming,
       systemMessageSettings,
     ],
   );
@@ -449,8 +509,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     setIsVideoEnabled((prev) => {
       const next = !prev;
       isVideoEnabledRef.current = next;
-      if (streamRef.current) streamRef.current.getVideoTracks().forEach(t => { t.enabled = next; });
-      if (!next) stopVideoCapture(); else if (isSessionOpenRef.current) startVideoCapture();
+      if (streamRef.current) streamRef.current.getVideoTracks().forEach((t) => { t.enabled = next; });
+      if (!next) stopVideoCapture();
+      else if (isSessionOpenRef.current) startVideoCapture();
       return next;
     });
   }, [startVideoCapture, stopVideoCapture]);
@@ -465,6 +526,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
           variant_id?: string;
           variantId?: string;
         };
+        variant?: {
+          id?: string;
+          title?: string;
+        };
+        productId?: string;
+        variantId?: string;
         label?: string;
         value?: string;
       }>;
@@ -475,54 +542,78 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
         return;
       }
 
-      if (action.action === 'add_to_cart') {
-        const title = action.product?.title || 'the selected product';
-        const id =
-          action.product?.variant_id ||
-          action.product?.variantId ||
-          action.product?.id ||
-          '';
+      if (action.action === "add_to_cart") {
+        const title = action.product?.title || "the selected product";
+        const variantId = action.variantId || action.variant?.id || action.product?.variant_id || action.product?.variantId || "";
+        const productId = action.productId || action.product?.id || "";
 
         sessionRef.current.sendRealtimeInput({
           text:
-            `The customer clicked Add to Cart for "${title}". ` +
-            `Product or variant ID: "${id}". ` +
-            `Use the correct Shopify UCP commerce tool now, then provide the updated cart or checkout result.`,
+            `The customer chose to add \"${title}\" to cart. ` +
+            `Use this exact selected variant id: \"${variantId}\". ` +
+            `Selected product id: \"${productId}\". ` +
+            `Do not infer or substitute a different product or variant. ` +
+            `Use the appropriate merchant cart tool now and then confirm the updated cart.` ,
         });
 
         return;
       }
 
-      if (action.action === 'choice') {
+      if (action.action === "buy_now") {
+        const title = action.product?.title || "the selected product";
+        const variantId = action.variantId || action.variant?.id || action.product?.variant_id || action.product?.variantId || "";
+        const productId = action.productId || action.product?.id || "";
+
         sessionRef.current.sendRealtimeInput({
           text:
-            `The customer selected "${action.label || action.value || 'an option'}". ` +
-            `Continue the requested commerce flow using the appropriate UCP tool.`,
+            `The customer chose to buy \"${title}\" now. ` +
+            `Use this exact selected variant id: \"${variantId}\". ` +
+            `Selected product id: \"${productId}\". ` +
+            `Do not infer or substitute a different product or variant. ` +
+            `Use the correct commerce flow for immediate checkout with the merchant.` ,
+        });
+
+        return;
+      }
+
+      if (action.action === "choice") {
+        sessionRef.current.sendRealtimeInput({
+          text:
+            `The customer selected \"${action.label || action.value || "an option"}\". ` +
+            `Continue the requested commerce flow using the appropriate tool and preserve the currently selected product state.`,
         });
       }
     };
 
-    window.addEventListener(
-      'commerce-panel-action',
-      handleCommerceAction as EventListener,
-    );
+    window.addEventListener("commerce-panel-action", handleCommerceAction as EventListener);
 
     return () => {
-      window.removeEventListener(
-        'commerce-panel-action',
-        handleCommerceAction as EventListener,
-      );
+      window.removeEventListener("commerce-panel-action", handleCommerceAction as EventListener);
     };
   }, []);
 
   return {
-    isConnected, isMuted, cameraFacing, isAudioPlaying,
-    micVolume, isUserTalking, transcript, status,
-    sessionDurationMs, videoRef, canvasRef,
-    startConnection, disconnect, sendText,
-    toggleMute, toggleVideo, flipCamera,
-    isVideoEnabled, consentGoogleSearch,
-    consentTranscription, setConsentGoogleSearch,
+    isConnected,
+    isMuted,
+    cameraFacing,
+    isAudioPlaying,
+    micVolume,
+    isUserTalking,
+    transcript,
+    status,
+    sessionDurationMs,
+    videoRef,
+    canvasRef,
+    startConnection,
+    disconnect,
+    sendText,
+    toggleMute,
+    toggleVideo,
+    flipCamera,
+    isVideoEnabled,
+    consentGoogleSearch,
+    consentTranscription,
+    setConsentGoogleSearch,
     setConsentTranscription,
   };
 }
