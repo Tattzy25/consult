@@ -1,0 +1,9 @@
+{
+	"servers": {
+		"keenable": {
+			"type": "http",
+			"url": "https://api.keenable.ai/mcp"
+		}
+	},
+	"inputs": []
+}
