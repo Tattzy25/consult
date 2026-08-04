@@ -1,62 +1,57 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+const DIST_DIR = join(__dirname, 'dist');
 
-// CORS middleware
+// CORS headers on every response
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+  if (req.method === 'OPTIONS') return res.status(200).end();
   next();
 });
 
-// API endpoint
+// API endpoint — no try/catch swallowing
 app.post('/api/session-token', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Not configured' });
+    return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
   }
 
-  try {
-    const client = new GoogleGenAI({ apiKey });
-    const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const { GoogleGenAI } = await import('@google/genai');
+  const client = new GoogleGenAI({ apiKey });
+  const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-    const token = await client.authTokens.create({
-      config: {
-        uses: 1,
-        expireTime,
-        newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
-        httpOptions: { apiVersion: 'v1alpha' },
-      },
-    });
+  const token = await client.authTokens.create({
+    config: {
+      uses: 1,
+      expireTime,
+      newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
+      httpOptions: { apiVersion: 'v1alpha' },
+    },
+  });
 
-    res.status(200).json({ token: token.name });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  res.status(200).json({ token: token.name });
 });
 
-// Serve static files from dist
-app.use(express.static(join(__dirname, 'dist')));
+// Serve static files from dist — no SPA fallback
+app.use(express.static(DIST_DIR));
 
-// SPA fallback - serve index.html for all other routes
-app.get('*', (req, res) => {
-  res.sendFile(join(__dirname, 'dist', 'index.html'));
+// Global error handler — nothing swallowed
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Serving static files from: ${DIST_DIR}`);
 });
