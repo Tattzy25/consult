@@ -6,6 +6,12 @@ import {
   LIVE_FUNCTION_DECLARATIONS,
   executeMcpCall,
 } from "@/lib/liveTools";
+import {
+  DEFAULT_SHOPPER_MESSAGES,
+  getShopperMessageForError,
+  logError,
+  type ShopperMessages,
+} from "@/lib/shopperMessages";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -19,6 +25,8 @@ type LiveSystemMessageSettings = {
   enabledMcpTools?: string[];
   responseModality?: "AUDIO" | "TEXT";
   onMcpResult?: (result: any) => void;
+  onAgentActive?: () => void;
+  onAgentInactive?: () => void;
 };
 
 type TranscriptItem = { role: "user" | "tatty"; text: string };
@@ -53,6 +61,10 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
   const [consentGoogleSearch, setConsentGoogleSearchState] = useState(false);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
+  const [isAgentActive, setIsAgentActive] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [shopperMessage, setShopperMessage] = useState<string | null>(null);
+  const [shopperMessages, setShopperMessages] = useState<ShopperMessages>(DEFAULT_SHOPPER_MESSAGES);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -85,6 +97,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const resumptionHandleRef = useRef<string | null>(null);
   const consentGoogleSearchRef = useRef(false);
   const consentTranscriptionRef = useRef(false);
+  const agentActiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shopperMessagesRef = useRef<ShopperMessages>(DEFAULT_SHOPPER_MESSAGES);
 
   const setConsentGoogleSearch = useCallback((value: boolean) => {
     consentGoogleSearchRef.current = value;
@@ -94,6 +108,47 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const setConsentTranscription = useCallback((value: boolean) => {
     consentTranscriptionRef.current = value;
     setConsentTranscriptionState(value);
+  }, []);
+
+  const triggerAgentActive = useCallback(() => {
+    setIsAgentActive(true);
+    systemMessageSettings.onAgentActive?.();
+    
+    // Clear any existing timeout
+    if (agentActiveTimeoutRef.current) {
+      clearTimeout(agentActiveTimeoutRef.current);
+    }
+    
+    // Auto-deactivate after 30 seconds of no activity
+    agentActiveTimeoutRef.current = setTimeout(() => {
+      setIsAgentActive(false);
+      systemMessageSettings.onAgentInactive?.();
+    }, 30000);
+  }, [systemMessageSettings]);
+
+  const triggerAgentInactive = useCallback(() => {
+    setIsAgentActive(false);
+    if (agentActiveTimeoutRef.current) {
+      clearTimeout(agentActiveTimeoutRef.current);
+      agentActiveTimeoutRef.current = null;
+    }
+    systemMessageSettings.onAgentInactive?.();
+  }, [systemMessageSettings]);
+
+  const showShopperError = useCallback((error: unknown, context: string) => {
+    logError(context, error);
+    const message = getShopperMessageForError(error, shopperMessagesRef.current);
+    setShopperMessage(message);
+    toast(message);
+  }, []);
+
+  const clearShopperError = useCallback(() => {
+    setShopperMessage(null);
+  }, []);
+
+  const updateShopperMessages = useCallback((messages: ShopperMessages) => {
+    shopperMessagesRef.current = messages;
+    setShopperMessages(messages);
   }, []);
 
   const stopDurationTimer = useCallback(() => {
@@ -427,7 +482,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     endSessionTracking();
     cleanupMedia();
     resetPlayback();
-
+ 
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session) session.close();
@@ -452,9 +507,23 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
           tools.push({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
         }
 
+        // Get session token from API
         const tokenRes = await fetch("/api/session-token", { method: "POST" });
+        if (!tokenRes.ok) {
+          const message = shopperMessagesRef.current.connectionUnavailable;
+          setShopperMessage(message);
+          toast(message);
+          logError("Session token fetch failed", new Error(`HTTP ${tokenRes.status}`));
+          return;
+        }
         const { token: ephemeralToken, error: tokenError } = await tokenRes.json();
-        if (!ephemeralToken) throw new Error(tokenError || "Failed to get session token");
+        if (!ephemeralToken) {
+          const message = shopperMessagesRef.current.connectionUnavailable;
+          setShopperMessage(message);
+          toast(message);
+          logError("Session token missing", new Error(tokenError || "No token returned"));
+          return;
+        }
 
         const ai = new GoogleGenAI({
           apiKey: ephemeralToken,
@@ -497,6 +566,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               const toolCalls = (message as any)?.toolCall?.functionCalls ?? [];
               if (toolCalls.length > 0 && sessionRef.current) {
+                // Trigger agent active state when tool calls start
+                triggerAgentActive();
+                
                 const functionResponses = await Promise.all(
                   toolCalls.map(async (call: any) => {
                     try {
@@ -513,23 +585,35 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
                       const result = await executeMcpCall(mcpPayload);
 
+                      // Store search results if this is a catalog search
+                      if (call.name === 'search_catalog' && result?.result?.products) {
+                        setSearchResults(result.result.products);
+                      }
+
                       return {
                         id: call.id,
                         name: call.name,
                         response: { result: result },
                       };
                     } catch (e: any) {
-                      console.error(`MCP call failed for ${call.name}:`, e);
+                      logError(`MCP call failed for ${call.name}`, e);
+                      // Return a shopper-friendly error to the agent
                       return {
                         id: call.id,
                         name: call.name,
-                        response: { error: e.message ?? "Unknown error" },
+                        response: { 
+                          error: "I wasn't able to complete that request right now. Please try again.",
+                          technicalError: e.message ?? "Unknown error"
+                        },
                       };
                     }
                   })
                 );
 
                 sessionRef.current.sendToolResponse({ functionResponses });
+                
+                // Trigger agent inactive after tool calls complete
+                triggerAgentInactive();
               }
 
               if ((message as any).sessionResumptionUpdate?.newHandle) {
@@ -571,7 +655,9 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setSessionDurationMs(0);
 
               if (!manualDisconnectRef.current) {
-                toast.error("Live session closed unexpectedly");
+                const message = shopperMessagesRef.current.connectionUnavailable;
+                setShopperMessage(message);
+                toast(message);
               }
               manualDisconnectRef.current = false;
             },
@@ -586,7 +672,11 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setStatus("error");
               setSessionDurationMs(0);
               manualDisconnectRef.current = true;
-              toast.error(error instanceof Error ? error.message : "Live API error");
+              
+              const message = getShopperMessageForError(error, shopperMessagesRef.current);
+              setShopperMessage(message);
+              toast(message);
+              logError("Live API error", error);
             },
           },
         });
@@ -601,7 +691,11 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
         setIsConnected(false);
         setSessionDurationMs(0);
         manualDisconnectRef.current = false;
-        toast.error(err instanceof Error ? err.message : "Failed to start the live session");
+        
+        const message = getShopperMessageForError(err, shopperMessagesRef.current);
+        setShopperMessage(message);
+        toast(message);
+        logError("Failed to start live session", err);
       }
     },
     [
@@ -678,5 +772,14 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     consentTranscription,
     setConsentGoogleSearch,
     setConsentTranscription,
+    isAgentActive,
+    searchResults,
+    setSearchResults,
+    triggerAgentActive,
+    triggerAgentInactive,
+    shopperMessage,
+    clearShopperError,
+    updateShopperMessages,
+    shopperMessages,
   };
 }
