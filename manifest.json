@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "My Extension",
+  "version": "1.0",
+  "host_permissions": [
+  "https://*.myshopify.com/*",
+  "https://*.shopify.com/*"
+],
+"permissions": ["scripting", "activeTab"]
+}
