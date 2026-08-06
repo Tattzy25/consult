@@ -9,8 +9,6 @@ import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 import { createIntentHandler, intents } from './lib/intentApi';
-import { fetchShopperMessages, type ShopperMessages } from './lib/shopperMessages';
-
 type PipContent = 'user' | 'agent';
 
 export default function App() {
@@ -163,66 +161,27 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 className="absolute inset-0 z-10"
               >
-                {/* Product display in center */}
+                {/* Product display in center - MCP App Iframe */}
                 <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <div className="w-full max-w-4xl max-h-[80vh] overflow-y-auto">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {searchResults.map((product: any, index: number) => {
-                        const variant = product.variants?.[0];
-                        const price = variant?.price_range?.min;
-                        return (
-                          <motion.div
-                            key={product.id || index}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            className="bg-zinc-900/80 backdrop-blur-sm rounded-xl overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-all"
-                          >
-                            {variant?.image?.url && (
-                              <div className="aspect-square bg-zinc-800">
-                                <img
-                                  src={variant.image.url}
-                                  alt={product.title}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            )}
-                            <div className="p-4">
-                              <h3 className="font-medium text-sm line-clamp-2 mb-2">
-                                {product.title}
-                              </h3>
-                              {price && (
-                                <p className="text-zinc-400 text-sm mb-3">
-                                  {price.currency} {(price.amount / 100).toFixed(2)}
-                                </p>
-                              )}
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleProductClick(product.id, variant?.seller?.domain)}
-                                  className="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium transition-colors"
-                                >
-                                  View Details
-                                </button>
-                                {variant?.id && variant?.seller?.domain && (
-                                  <button
-                                    onClick={() => handleAddToCart(variant.id, variant.seller.domain)}
-                                    className="px-3 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-xs font-medium transition-colors"
-                                  >
-                                    <ShoppingCart size={14} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <iframe
+                    src="https://consult-production-ace5.up.railway.app/mcp-app.html"
+                    className="w-full max-w-5xl h-full max-h-[85vh] rounded-3xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md shadow-2xl"
+                    title="Product Showcase"
+                  />
                 </div>
 
                 {/* Agent orb in PIP window */}
-                <div className="absolute bottom-28 right-4 md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-50">
+                <div className="absolute bottom-28 right-4 md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-50 group">
                   <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
+                  
+                  {/* Quick Toggle to bring Gemini back to center */}
+                  <button 
+                    onClick={handleUcpDrawerClick}
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Restore Agent to Center"
+                  >
+                    <div className="w-3 h-3 border-t-2 border-l-2 border-white rounded-tl-sm" />
+                  </button>
                 </div>
 
                 {/* UCP Drawer button */}
