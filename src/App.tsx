@@ -9,6 +9,7 @@ import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 import { createIntentHandler, intents } from './lib/intentApi';
+
 type PipContent = 'user' | 'agent';
 
 export default function App() {
@@ -16,7 +17,6 @@ export default function App() {
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
 
   const [pipContent, setPipContent] = useState<PipContent>('user');
-  const [shopperMessages, setShopperMessages] = useState<ShopperMessages | null>(null);
 
   const {
     isConnected,
@@ -35,9 +35,6 @@ export default function App() {
     isAgentActive,
     searchResults,
     sendText,
-    shopperMessage,
-    clearShopperError,
-    updateShopperMessages,
   } = useGeminiLive({
     ...SYSTEM_MESSAGE_SETTINGS,
     onAgentActive: () => {
@@ -47,14 +44,6 @@ export default function App() {
       // Don't auto-switch back - let user control via UCP drawer
     },
   });
-
-  // Fetch merchant-customized messages on mount
-  useEffect(() => {
-    fetchShopperMessages().then((messages) => {
-      setShopperMessages(messages);
-      updateShopperMessages(messages);
-    });
-  }, [updateShopperMessages]);
 
   // Create intent handler for product interactions
   const intentHandler = React.useMemo(
@@ -85,7 +74,6 @@ export default function App() {
   // Handle UCP drawer click - switch back to user camera view
   const handleUcpDrawerClick = () => {
     setPipContent('user');
-    clearShopperError();
   };
 
   // Handle product click - send intent to Gemini
@@ -105,22 +93,6 @@ export default function App() {
           ref={stageRef}
           className="flex-1 relative bg-black flex roast-gradient min-h-[100svh]"
         >
-          {/* Shopper error message overlay */}
-          <AnimatePresence>
-            {shopperMessage && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
-              >
-                <div className="bg-red-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg">
-                  {shopperMessage}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <ConnectingOverlay show={status === "connecting"} />
 
           {/* Main content - switches based on agent activity */}

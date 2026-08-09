@@ -72,5 +72,5 @@ If the rendering contract for disclosures cannot be met (e.g., in a plain-text m
 export const SYSTEM_MESSAGE_SETTINGS = {
   model: "gemini-3.1-flash-live-preview",
   systemInstruction: SYSTEM_MESSAGE,
-  enableGoogleSearch: true,
+  enableGoogleSearch: false,
 };

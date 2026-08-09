@@ -244,6 +244,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
           // If the model wants to search catalog, get product, or checkout
           if (fc.name === "search_catalog" || fc.name === "get_product" || fc.name === "create_checkout") {
             
+            // Dispatch a real backend network call against the merchant's UCP/MCP router
             const endpoint = `https://${systemMessageSettings.merchantDomain}/api/ucp/mcp`;
             const response = await fetch(endpoint, {
               method: "POST",
@@ -280,6 +281,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
           resultPayload = { status: "error", message: err.message };
         }
 
+        // Package the synchronous response back so the live audio session doesn't block or drop
         functionResponses.push({
           id: fc.id,
           name: fc.name,
