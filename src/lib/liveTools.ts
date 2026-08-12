@@ -246,18 +246,49 @@ export const LIVE_FUNCTION_DECLARATIONS = [
 
 type McpToolName = "search_catalog" | "get_product" | "create_checkout";
 
+/**
+ * Resolve the merchant's UCP MCP endpoint dynamically. Nothing is hardcoded:
+ * each merchant that installs the app is identified at runtime by its domain
+ * (resolved from the Shopify `?shop=` param in the browser). A build-time
+ * override (VITE_MCP_ENDPOINT_URL) is honored for local testing.
+ */
+function resolveMcpEndpoint(merchantDomain: string): string {
+  const configured =
+    (import.meta as any)?.env?.VITE_MCP_ENDPOINT_URL || "";
+  if (configured) return configured;
+  if (merchantDomain) {
+    const host = merchantDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return `https://${host}/api/ucp/mcp`;
+  }
+  return "";
+}
+
 async function mcpCall(
   merchantDomain: string,
   tool: McpToolName,
   args: Record<string, unknown>,
 ) {
-  const response = await fetch(`https://${merchantDomain}/api/ucp/mcp`, {
+  const endpoint = resolveMcpEndpoint(merchantDomain);
+  if (!endpoint) {
+    return {
+      error: "no_merchant",
+      content:
+        "No merchant storefront is connected to this session yet, so the catalog can't be reached.",
+    };
+  }
+
+  // Go through the same-origin /api/ucp proxy (server.js). The proxy forwards
+  // to the resolved merchant endpoint, handles CORS, and injects UI metadata.
+  const response = await fetch("/api/ucp", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "UCP-Agent": `profile="${AGENT_PROFILE_URL}"`,
+      "ucp-target-url": endpoint,
+      "MCP-Protocol-Version": "2026-03-26",
     },
     body: JSON.stringify({
+      _proxyUrl: endpoint,
       jsonrpc: "2.0",
       method: "tools/call",
       params: {
@@ -274,7 +305,17 @@ async function mcpCall(
   });
 
   const payload = await response.json();
-  return payload.result?.structuredContent ?? payload.result;
+  if (payload?.error) {
+    return {
+      error: payload.error.data?.code || "mcp_error",
+      content:
+        payload.error.data?.content ||
+        payload.error.message ||
+        "The merchant storefront could not be reached.",
+      continue_url: payload.error.data?.continue_url,
+    };
+  }
+  return payload.result?.structuredContent ?? payload.result ?? payload;
 }
 
 export const LIVE_FUNCTION_HANDLERS = {
