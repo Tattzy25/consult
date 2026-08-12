@@ -8,7 +8,6 @@ import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
-import { createIntentHandler, intents } from './lib/intentApi';
 
 type PipContent = 'user' | 'agent';
 
@@ -34,7 +33,6 @@ export default function App() {
     flipCamera,
     isAgentActive,
     searchResults,
-    sendText,
   } = useGeminiLive({
     ...SYSTEM_MESSAGE_SETTINGS,
     onAgentActive: () => {
@@ -44,12 +42,6 @@ export default function App() {
       // Don't auto-switch back - let user control via UCP drawer
     },
   });
-
-  // Create intent handler for product interactions
-  const intentHandler = React.useMemo(
-    () => createIntentHandler(sendText),
-    [sendText]
-  );
 
   React.useEffect(() => {
     if (status === "connecting") {
@@ -74,16 +66,6 @@ export default function App() {
   // Handle UCP drawer click - switch back to user camera view
   const handleUcpDrawerClick = () => {
     setPipContent('user');
-  };
-
-  // Handle product click - send intent to Gemini
-  const handleProductClick = (productId: string, storeDomain: string) => {
-    intentHandler.sendIntent(intents.viewProductDetails(productId, storeDomain));
-  };
-
-  // Handle add to cart - send intent to Gemini
-  const handleAddToCart = (variantId: string, storeDomain: string) => {
-    intentHandler.sendIntent(intents.addToCart(variantId, storeDomain));
   };
 
   return (
