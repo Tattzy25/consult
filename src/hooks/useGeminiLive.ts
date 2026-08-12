@@ -465,6 +465,21 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     sessionRef.current.sendRealtimeInput({ text });
   }, []);
 
+  /**
+   * Send an image the buyer shared so the agent can "see" it and shop for
+   * matching / similar products. Images are sent on the `video` key per the
+   * Live API, followed by a short text nudge so the agent acts on it.
+   */
+  const sendImage = useCallback((base64Data: string, mimeType = "image/jpeg") => {
+    if (!sessionRef.current || !isSessionOpenRef.current) return;
+    sessionRef.current.sendRealtimeInput({
+      video: { data: base64Data, mimeType },
+    });
+    sessionRef.current.sendRealtimeInput({
+      text: "I just shared an image of a product I'm interested in. Look at it and search the catalog for matching or visually similar items.",
+    });
+  }, []);
+
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const next = !prev;
@@ -504,6 +519,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     startConnection,
     disconnect,
     sendText,
+    sendImage,
     toggleMute,
     toggleVideo,
     flipCamera,

@@ -179,12 +179,13 @@ export default function App() {
           <div className="flex items-center justify-center gap-12 pt-4 pb-2">
             <button
               type="button"
-              onClick={toggleMute}
+              onClick={() => fileInputRef.current?.click()}
               className="text-white/80 hover:text-white active:scale-90 transition-all touch-manipulation"
               style={{ WebkitTapHighlightColor: 'transparent' }}
-              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+              aria-label="Share a photo of a product"
+              title="Share a photo of a product"
             >
-              {isMuted ? <MicOff size={26} className="text-red-400" /> : <Mic size={26} />}
+              <ImagePlus size={26} />
             </button>
 
             <button
@@ -197,6 +198,14 @@ export default function App() {
               <PhoneOff size={32} className="text-red-500" />
             </button>
           </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageSelected}
+          />
         </footer>
       )}
 
