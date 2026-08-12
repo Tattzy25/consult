@@ -247,18 +247,24 @@ export const LIVE_FUNCTION_DECLARATIONS = [
 type McpToolName = "search_catalog" | "get_product" | "create_checkout";
 
 /**
- * Resolve the merchant's UCP MCP endpoint dynamically. Nothing is hardcoded:
- * each merchant that installs the app is identified at runtime by its domain
- * (resolved from the Shopify `?shop=` param in the browser). A build-time
- * override (VITE_MCP_ENDPOINT_URL) is honored for local testing.
+ * Resolve the merchant's public MCP endpoint. Nothing is hardcoded and NO
+ * credentials are involved — UCP / Shopify storefront MCP endpoints are public
+ * and CORS-enabled, so the browser calls them directly (this app is embedded
+ * as an iframe and has no backend of its own to proxy through).
+ *
+ * Priority:
+ *   1. VITE_MCP_ENDPOINT_URL — the endpoint configured for this install.
+ *   2. `?shop=store.myshopify.com` → the store's public storefront MCP.
  */
 function resolveMcpEndpoint(merchantDomain: string): string {
   const configured =
-    (import.meta as any)?.env?.VITE_MCP_ENDPOINT_URL || "";
+    (import.meta as any)?.env?.VITE_MCP_ENDPOINT_URL ||
+    (import.meta as any)?.env?.LIVE_MCP_ENDPOINT_URL ||
+    "";
   if (configured) return configured;
   if (merchantDomain) {
     const host = merchantDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    return `https://${host}/api/ucp/mcp`;
+    return `https://${host}/api/mcp`;
   }
   return "";
 }
@@ -277,34 +283,33 @@ async function mcpCall(
     };
   }
 
-  // Go through the same-origin /api/ucp proxy (server.js). The proxy forwards
-  // to the resolved merchant endpoint, handles CORS, and injects UI metadata.
-  const response = await fetch("/api/ucp", {
+  // Direct, unauthenticated JSON-RPC call to the public MCP endpoint.
+  // No token, no Authorization header, no proxy.
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "UCP-Agent": `profile="${AGENT_PROFILE_URL}"`,
-      "ucp-target-url": endpoint,
-      "MCP-Protocol-Version": "2026-03-26",
+      Accept: "application/json, text/event-stream",
     },
     body: JSON.stringify({
-      _proxyUrl: endpoint,
       jsonrpc: "2.0",
+      id: crypto.randomUUID(),
       method: "tools/call",
       params: {
         name: tool,
-        arguments: {
-          meta: {
-            "ucp-agent": { profile: AGENT_PROFILE_URL },
-          },
-          ...args,
-        },
+        arguments: args,
       },
-      id: crypto.randomUUID(),
     }),
   });
 
-  const payload = await response.json();
+  if (!response.ok) {
+    return {
+      error: `http_${response.status}`,
+      content: `The storefront MCP endpoint returned ${response.status}.`,
+    };
+  }
+
+  const payload = await parseMcpResponse(response);
   if (payload?.error) {
     return {
       error: payload.error.data?.code || "mcp_error",
@@ -316,6 +321,32 @@ async function mcpCall(
     };
   }
   return payload.result?.structuredContent ?? payload.result ?? payload;
+}
+
+/**
+ * MCP-over-HTTP endpoints may reply as plain JSON or as an SSE stream
+ * (`text/event-stream`). Handle both so tool calls succeed either way.
+ */
+async function parseMcpResponse(response: Response): Promise<any> {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/event-stream")) {
+    const text = await response.text();
+    // Grab the last JSON data line from the SSE frames.
+    const dataLines = text
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trim())
+      .filter(Boolean);
+    for (let i = dataLines.length - 1; i >= 0; i--) {
+      try {
+        return JSON.parse(dataLines[i]);
+      } catch {
+        /* keep looking */
+      }
+    }
+    return {};
+  }
+  return response.json();
 }
 
 export const LIVE_FUNCTION_HANDLERS = {
