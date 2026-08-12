@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Mic, MicOff, PhoneOff } from 'lucide-react';
+import { ImagePlus, Mic, MicOff, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
@@ -31,6 +31,7 @@ function resolveMerchantDomain(): string {
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const merchantDomainRef = useRef<string>(resolveMerchantDomain());
   const merchantDomain = merchantDomainRef.current;
 
@@ -52,6 +53,7 @@ export default function App() {
     searchResults,
     clearAgentView,
     sendText,
+    sendImage,
   } = useGeminiLive({
     ...SYSTEM_MESSAGE_SETTINGS,
     merchantDomain,
@@ -64,6 +66,19 @@ export default function App() {
       phoneIconRef.current?.stopAnimation();
     }
   }, [status]);
+
+  const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1];
+      if (base64) sendImage(base64, file.type);
+    };
+    reader.readAsDataURL(file);
+    // Reset so the same file can be re-selected
+    e.target.value = '';
+  };
 
   const visualMode: 'idle' | 'listening' | 'speaking' = isAudioPlaying
     ? 'speaking'
