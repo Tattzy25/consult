@@ -20,7 +20,14 @@ type LiveSystemMessageSettings = {
   model?: string;
   merchantDomain?: string;
   responseModality?: "AUDIO" | "TEXT";
+  /** Fired when the agent renders products/checkout on screen (drives PIP). */
+  onAgentActive?: () => void;
+  /** Fired when the product view is dismissed and we return to the call. */
+  onAgentInactive?: () => void;
 };
+
+// Tools whose results should take over the screen (product / checkout views).
+const SCREEN_TOOLS = ["search_catalog", "get_product", "create_checkout"];
 
 type TranscriptItem = { role: "user" | "model"; text: string };
 
@@ -53,6 +60,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
+  const [searchResults, setSearchResults] = useState<any>(null);
+  const [isAgentActive, setIsAgentActive] = useState(false);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
@@ -275,12 +284,21 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     setStatus("idle");
     setTranscript([]);
     setSessionDurationMs(0);
+    setSearchResults(null);
+    setIsAgentActive(false);
   }, [cleanupMedia, endSessionTracking, resetPlayback]);
+
+  const clearAgentView = useCallback(() => {
+    setIsAgentActive(false);
+    systemMessageSettings.onAgentInactive?.();
+  }, [systemMessageSettings]);
   const startConnection = useCallback(
     async (selectedVoice: string) => {
       try {
         setStatus("connecting");
         manualDisconnectRef.current = false;
+        // Keep the merchant domain fresh for this session (resolved per-install).
+        merchantDomainRef.current = systemMessageSettings.merchantDomain || "";
 
         await initAudio();
         await startStreaming();
@@ -338,9 +356,33 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
                 const functionResponses = [];
                 for (const call of toolCalls) {
                   const fn = (LIVE_FUNCTION_HANDLERS as any)[call.name];
+                  let result: any;
                   if (fn) {
-                    const result = await fn(call.args, merchantDomainRef.current);
-                    functionResponses.push({ id: call.id, name: call.name, response: { result } });
+                    try {
+                      result = await fn(call.args, merchantDomainRef.current);
+                    } catch (err: any) {
+                      // Always return a response so the model never hangs
+                      // waiting on a synchronous tool call.
+                      console.log("[v0] tool handler error:", call.name, err?.message);
+                      result = {
+                        error: "tool_error",
+                        content: err?.message ?? "Tool execution failed.",
+                      };
+                    }
+                  } else {
+                    result = {
+                      error: "unknown_tool",
+                      content: `No handler registered for ${call.name}.`,
+                    };
+                  }
+
+                  functionResponses.push({ id: call.id, name: call.name, response: { result } });
+
+                  // Drive the on-screen product/checkout view (PIP switch).
+                  if (SCREEN_TOOLS.includes(call.name) && result && !result.error) {
+                    setSearchResults(result);
+                    setIsAgentActive(true);
+                    systemMessageSettings.onAgentActive?.();
                   }
                 }
                 if (functionResponses.length > 0) {
@@ -468,5 +510,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     isVideoEnabled,
     consentTranscription,
     setConsentTranscription,
+    searchResults,
+    isAgentActive,
+    clearAgentView,
   };
 }

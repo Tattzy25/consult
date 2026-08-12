@@ -1,22 +1,38 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Mic, MicOff, PhoneOff, ShoppingCart } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Mic, MicOff, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
+import { ProductCatalogView } from './components/ProductCatalogView';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
-import { createIntentHandler, intents } from './lib/intentApi';
 
-type PipContent = 'user' | 'agent';
+/**
+ * Resolve the merchant this session belongs to WITHOUT hardcoding any store.
+ * Shopify embedded/marketplace installs always carry the store in the URL
+ * (`?shop=store.myshopify.com`). We accept a few aliases and fall back to a
+ * build-time override for local testing.
+ */
+function resolveMerchantDomain(): string {
+  if (typeof window === 'undefined') return '';
+  const params = new URLSearchParams(window.location.search);
+  const raw =
+    params.get('shop') ||
+    params.get('merchant') ||
+    params.get('store') ||
+    (import.meta as any)?.env?.VITE_MERCHANT_DOMAIN ||
+    '';
+  return raw.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
-
-  const [pipContent, setPipContent] = useState<PipContent>('user');
+  const merchantDomainRef = useRef<string>(resolveMerchantDomain());
+  const merchantDomain = merchantDomainRef.current;
 
   const {
     isConnected,
@@ -34,25 +50,15 @@ export default function App() {
     flipCamera,
     isAgentActive,
     searchResults,
+    clearAgentView,
     sendText,
   } = useGeminiLive({
     ...SYSTEM_MESSAGE_SETTINGS,
-    onAgentActive: () => {
-      setPipContent('agent');
-    },
-    onAgentInactive: () => {
-      // Don't auto-switch back - let user control via UCP drawer
-    },
+    merchantDomain,
   });
 
-  // Create intent handler for product interactions
-  const intentHandler = React.useMemo(
-    () => createIntentHandler(sendText),
-    [sendText]
-  );
-
   React.useEffect(() => {
-    if (status === "connecting") {
+    if (status === 'connecting') {
       phoneIconRef.current?.startAnimation();
     } else {
       phoneIconRef.current?.stopAnimation();
@@ -68,165 +74,131 @@ export default function App() {
   const audioLevel = isAudioPlaying
     ? 0.85
     : isUserTalking
-      ? 0.12 + (micVolume * 0.4)
+      ? 0.12 + micVolume * 0.4
       : 0.12;
 
-  // Handle UCP drawer click - switch back to user camera view
-  const handleUcpDrawerClick = () => {
-    setPipContent('user');
-  };
-
-  // Handle product click - send intent to Gemini
-  const handleProductClick = (productId: string, storeDomain: string) => {
-    intentHandler.sendIntent(intents.viewProductDetails(productId, storeDomain));
-  };
-
-  // Handle add to cart - send intent to Gemini
-  const handleAddToCart = (variantId: string, storeDomain: string) => {
-    intentHandler.sendIntent(intents.addToCart(variantId, storeDomain));
-  };
+  // The agent takes over the screen once it has rendered products/checkout.
+  const showProductStage = isConnected && isAgentActive && !!searchResults;
 
   return (
-    <div className="min-h-[100svh] bg-zinc-950 text-zinc-100 flex flex-col overflow-y-auto selection:bg-brand-primary/30">
-      <main className="flex-1 relative flex flex-col lg:flex-row overflow-hidden h-full">
-        <div
-          ref={stageRef}
-          className="flex-1 relative bg-black flex roast-gradient min-h-[100svh]"
-        >
-          <ConnectingOverlay show={status === "connecting"} />
+    <div className="min-h-[100svh] bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden selection:bg-brand-primary/30">
+      <main
+        ref={stageRef}
+        className="flex-1 relative bg-black roast-gradient overflow-hidden"
+      >
+        <ConnectingOverlay show={status === 'connecting'} />
 
-          {/* Main content - switches based on agent activity */}
-          <AnimatePresence mode="wait">
-            {pipContent === 'user' ? (
-              // Normal state: Full screen orb + user camera PIP
-              <motion.div
-                key="user-view"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0"
-              >
-                {/* Orb — full screen behind everything */}
-                <div className="absolute inset-0 pointer-events-none z-0">
-                  <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
-                </div>
+        <AnimatePresence mode="wait">
+          {showProductStage ? (
+            // Agent active: products fill the stage, orb drops into the PIP.
+            <motion.div
+              key="agent-view"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-10"
+            >
+              <div className="absolute inset-0 overflow-y-auto px-4 pt-4 pb-6">
+                <ProductCatalogView
+                  payload={searchResults}
+                  merchantDomain={merchantDomain}
+                  onClose={clearAgentView}
+                  onSendFeedback={sendText}
+                />
+              </div>
 
-                {/* User camera PIP */}
-                <div
-                  className="absolute inset-0 z-10 pointer-events-none"
-                  style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
-                >
-                  <CameraPreview
-                    videoRef={videoRef}
-                    cameraFacing={cameraFacing}
-                    stageRef={stageRef}
-                    onFlip={flipCamera}
-                  />
-                </div>
-              </motion.div>
-            ) : (
-              // Agent active state: Products in center + orb in PIP
-              <motion.div
-                key="agent-view"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 z-10"
-              >
-                {/* Product display in center - MCP App Iframe */}
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <iframe
-                    src="https://consult-production-ace5.up.railway.app/mcp-app.html"
-                    className="w-full max-w-5xl h-full max-h-[85vh] rounded-3xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md shadow-2xl"
-                    title="Product Showcase"
-                  />
-                </div>
-
-                {/* Agent orb in PIP window */}
-                <div className="absolute bottom-28 right-4 md:bottom-8 md:right-8 w-24 sm:w-32 md:w-44 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-50 group">
-                  <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
-                  
-                  {/* Quick Toggle to bring Gemini back to center */}
-                  <button 
-                    onClick={handleUcpDrawerClick}
-                    className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Restore Agent to Center"
-                  >
-                    <div className="w-3 h-3 border-t-2 border-l-2 border-white rounded-tl-sm" />
-                  </button>
-                </div>
-
-                {/* UCP Drawer button */}
+              {/* Agent orb in PIP — sits above the footer, never overlapping it. */}
+              <div className="absolute bottom-4 right-4 w-24 sm:w-28 md:w-36 aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden border-2 border-zinc-800 shadow-2xl z-30 group">
+                <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
                 <button
-                  onClick={handleUcpDrawerClick}
-                  className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-zinc-800/90 backdrop-blur-sm hover:bg-zinc-700/90 rounded-full border border-zinc-700 transition-all active:scale-95"
+                  onClick={clearAgentView}
+                  className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-black/80 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Restore agent to full screen"
+                  aria-label="Restore agent to full screen"
                 >
-                  <span className="text-sm font-medium">Back to Call</span>
+                  <div className="w-3 h-3 border-t-2 border-l-2 border-white rounded-tl-sm" />
                 </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+            </motion.div>
+          ) : (
+            // Default: full-screen orb with the user's camera PIP.
+            <motion.div
+              key="user-view"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0"
+            >
+              <div className="absolute inset-0 pointer-events-none z-0">
+                <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
+              </div>
 
-          {/* Phone button (pre-call) / Dock (in-call) */}
-          <AnimatePresence mode="wait">
-            {!isConnected ? (
-              <motion.div
-                key="disconnected-screen"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-4"
+              <div
+                className="absolute inset-0 z-10 pointer-events-none"
+                style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
               >
-                <button
-                  type="button"
-                  onClick={() => startConnection("Aoede")}
-                  disabled={status === "connecting"}
-                  className={cn(
-                    "relative flex items-center justify-center p-4 text-green-400",
-                    "active:scale-95 transition-all duration-300 touch-manipulation",
-                    status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-110 hover:text-green-300"
-                  )}
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <PhoneCallIcon
-                    ref={phoneIconRef}
-                    className="w-12 h-12 md:w-16 md:h-16"
-                  />
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="connected-screen"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
-                style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
-              >
-                <div className="flex items-center justify-center gap-8 pointer-events-auto">
-                  <button
-                    type="button"
-                    onClick={toggleMute}
-                    className="text-white/80 hover:text-white active:scale-90 transition-all touch-manipulation"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    {isMuted ? <MicOff size={26} className="text-red-400" /> : <Mic size={26} />}
-                  </button>
+                <CameraPreview
+                  videoRef={videoRef}
+                  cameraFacing={cameraFacing}
+                  stageRef={stageRef}
+                  onFlip={flipCamera}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    className="active:scale-90 transition-all touch-manipulation"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <PhoneOff size={32} className="text-red-500" />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Pre-call: centered phone button */}
+        {!isConnected && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+            <button
+              type="button"
+              onClick={() => startConnection('Aoede')}
+              disabled={status === 'connecting'}
+              className={cn(
+                'pointer-events-auto relative flex items-center justify-center p-4 text-green-400',
+                'active:scale-95 transition-all duration-300 touch-manipulation',
+                status === 'connecting'
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:scale-110 hover:text-green-300',
+              )}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <PhoneCallIcon ref={phoneIconRef} className="w-12 h-12 md:w-16 md:h-16" />
+            </button>
+          </div>
+        )}
       </main>
+
+      {/* Persistent footer — the End button never moves. */}
+      {isConnected && (
+        <footer
+          className="shrink-0 border-t border-white/5 bg-zinc-950/85 backdrop-blur-md"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="flex items-center justify-center gap-12 pt-4 pb-2">
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="text-white/80 hover:text-white active:scale-90 transition-all touch-manipulation"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            >
+              {isMuted ? <MicOff size={26} className="text-red-400" /> : <Mic size={26} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={disconnect}
+              className="active:scale-90 transition-all touch-manipulation"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label="End call"
+            >
+              <PhoneOff size={32} className="text-red-500" />
+            </button>
+          </div>
+        </footer>
+      )}
 
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
     </div>
