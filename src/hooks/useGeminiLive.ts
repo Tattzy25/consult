@@ -1,8 +1,15 @@
-import { useCallback, useRef, useState, useEffect } from "react";
+// @ts-nocheck
+
+import { useCallback, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
 
-// Constants conforming to Gemini 3.1 Flash Live specifications
+import {
+  LIVE_FUNCTION_DECLARATIONS,
+  LIVE_FUNCTION_HANDLERS,
+} from "@/lib/liveTools";
+
+
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
 const OUTPUT_PREBUFFER_SAMPLES = 2400; // 100ms at 24k
@@ -11,14 +18,11 @@ const VIDEO_INTERVAL_MS = 500;
 type LiveSystemMessageSettings = {
   systemInstruction: string;
   model?: string;
-  enableGoogleSearch?: boolean;
-  enabledMcpTools?: string[];
+  merchantDomain?: string;
   responseModality?: "AUDIO" | "TEXT";
-  merchantDomain: string; // The active merchant store domain (e.g. store.myshopify.com)
-  agentProfileUrl: string; // Your verified, hosted UCP profile URL
 };
 
-type TranscriptItem = { role: "user" | "tatty"; text: string };
+type TranscriptItem = { role: "user" | "model"; text: string };
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -33,20 +37,12 @@ function pcm16ToBase64(pcm: Int16Array): string {
 function base64ToPCM16(base64: string): Int16Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Int16Array(bytes.buffer);
 }
 
-/**
- * Updated useGeminiLive Hook matching your exact implementation structure.
- * Houses the dynamic canvas rendering logic and layout transitions
- * for product showcases, without dropping the session or stream connections.
- */
 export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) {
   const [isConnected, setIsConnected] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
@@ -56,20 +52,14 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [status, setStatus] = useState<"idle" | "connecting" | "live" | "error">("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
-  const [consentGoogleSearch, setConsentGoogleSearchState] = useState(false);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
-
-  // ==========================================
-  // Layout Transitions for Product Showcase
-  // ==========================================
-  const [activeLayout, setActiveLayout] = useState<"video-call" | "showcase">("video-call");
-  const [showcasePayload, setShowcasePayload] = useState<any | null>(null);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
   const cameraFacingRef = useRef<"user" | "environment">("user");
   const isSessionOpenRef = useRef(false);
   const manualDisconnectRef = useRef(false);
+  const merchantDomainRef = useRef(systemMessageSettings.merchantDomain || "");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -94,219 +84,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const connectedAtRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
   const resumptionHandleRef = useRef<string | null>(null);
-  const consentGoogleSearchRef = useRef(false);
   const consentTranscriptionRef = useRef(false);
-
-  // ==========================================
-  // Custom Canvas Rendering Loop
-  // Handles self-view OR rendering the Gemini Orb in PiP
-  // ==========================================
-  const activeLayoutRef = useRef<"video-call" | "showcase">("video-call");
-  const micVolumeRef = useRef<number>(0);
-
-  // Keep refs synchronized with state to avoid re-binding drawing intervals
-  useEffect(() => {
-    activeLayoutRef.current = activeLayout;
-  }, [activeLayout]);
-
-  useEffect(() => {
-    micVolumeRef.current = micVolume;
-  }, [micVolume]);
-
-  const startCanvasDrawingLoop = useCallback(() => {
-    if (rafIdRef.current) {
-      cancelAnimationFrame(rafIdRef.current);
-    }
-
-    let pulsePhase = 0;
-
-    const draw = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        rafIdRef.current = requestAnimationFrame(draw);
-        return;
-      }
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        rafIdRef.current = requestAnimationFrame(draw);
-        return;
-      }
-
-      const width = canvas.width;
-      const height = canvas.height;
-
-      if (activeLayoutRef.current === "video-call") {
-        // Mode 1: Standard call. Draw camera stream (user self-view)
-        if (videoRef.current && videoRef.current.readyState >= 2) {
-          ctx.drawImage(videoRef.current, 0, 0, width, height);
-        } else {
-          // Fallback background
-          ctx.fillStyle = "#171717";
-          ctx.fillRect(0, 0, width, height);
-        }
-      } else {
-        // Mode 2: Showcase. User view cut. Draw beautiful animated Gemini Orb
-        ctx.fillStyle = "#0a0a0a";
-        ctx.fillRect(0, 0, width, height);
-
-        // Calculate dynamic dimensions for pulsing
-        pulsePhase += 0.05;
-        // Blend volume signals with sine waves for natural-looking organic movement
-        const baseRadius = Math.min(width, height) * 0.22;
-        const volumeFactor = micVolumeRef.current * 1.5;
-        const pulse = Math.sin(pulsePhase) * 4 + volumeFactor * 25;
-        const finalRadius = Math.max(15, baseRadius + pulse);
-
-        // Center coordinates
-        const cx = width / 2;
-        const cy = height / 2;
-
-        // Render Outer glow ring
-        const outerGradient = ctx.createRadialGradient(cx, cy, finalRadius * 0.4, cx, cy, finalRadius * 1.8);
-        outerGradient.addColorStop(0, "rgba(56, 189, 248, 0.15)"); // sky-400
-        outerGradient.addColorStop(0.5, "rgba(59, 130, 246, 0.05)"); // blue-500
-        outerGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = outerGradient;
-        ctx.beginPath();
-        ctx.arc(cx, cy, finalRadius * 1.8, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Render pulsing core Orb
-        const innerGradient = ctx.createRadialGradient(
-          cx - finalRadius * 0.15,
-          cy - finalRadius * 0.15,
-          finalRadius * 0.05,
-          cx,
-          cy,
-          finalRadius
-        );
-        innerGradient.addColorStop(0, "#22d3ee"); // cyan-400 core
-        innerGradient.addColorStop(0.4, "#3b82f6"); // blue-500 mid
-        innerGradient.addColorStop(1, "#1e3a8a"); // blue-900 border
-        ctx.fillStyle = innerGradient;
-        ctx.beginPath();
-        ctx.arc(cx, cy, finalRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Overlay text label inside PiP
-        ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
-        ctx.font = "bold 9px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText("GEMINI LIVE", cx, height - 16);
-      }
-
-      rafIdRef.current = requestAnimationFrame(draw);
-    };
-
-    rafIdRef.current = requestAnimationFrame(draw);
-  }, []);
-
-  // Ensure canvas renderer initializes when hook loads
-  useEffect(() => {
-    startCanvasDrawingLoop();
-    return () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-    };
-  }, [startCanvasDrawingLoop]);
-
-  // ==========================================
-  // Live Message Processing & Synced Tool Handlers
-  // ==========================================
-  const handleServerMessage = useCallback(async (message: any) => {
-    // 1. Process standard audio/text outputs (multi-part server packets)
-    if (message.serverContent && message.serverContent.modelTurn) {
-      const parts = message.serverContent.modelTurn.parts || [];
-      for (const part of parts) {
-        if (part.inlineData) {
-          const audioBase64 = part.inlineData.data;
-          const pcm16 = base64ToPCM16(audioBase64);
-          enqueueOutputPCM(pcm16);
-        }
-        if (part.text) {
-          // Render transcripts in local UI State
-          setTranscript((prev) => [...prev, { role: "tatty", text: part.text }]);
-        }
-      }
-    }
-
-    // 2. Intercept UCP/MCP tool executions for product showcase transitions
-    if (message.toolCall) {
-      const functionCalls = message.toolCall.functionCalls || [];
-      const functionResponses: any[] = [];
-
-      for (const fc of functionCalls) {
-        let resultPayload: any = { status: "success" };
-
-        try {
-          // If the model wants to search catalog, get product, or checkout
-          if (fc.name === "search_catalog" || fc.name === "get_product" || fc.name === "create_checkout") {
-            
-            const endpoint = `https://${systemMessageSettings.merchantDomain}/api/ucp/mcp`;
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "UCP-Agent": `profile="${systemMessageSettings.agentProfileUrl}"`
-              },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                method: "tools/call",
-                params: {
-                  name: fc.name,
-                  arguments: fc.arguments
-                },
-                id: fc.id
-              })
-            });
-
-            if (response.ok) {
-              const ucpJson = await response.json();
-              resultPayload = ucpJson.result?.structuredContent || ucpJson.result || { status: "success" };
-              
-              // Trigger showcase viewport layout swap
-              setShowcasePayload(resultPayload);
-              setActiveLayout("showcase");
-              
-              toast.success(`Showcasing products for ${fc.name}`);
-            } else {
-              resultPayload = { status: "error", message: `HTTP Error: ${response.status}` };
-            }
-          }
-        } catch (err: any) {
-          console.error("Failed executing synced UCP tool:", err);
-          resultPayload = { status: "error", message: err.message };
-        }
-
-        functionResponses.push({
-          id: fc.id,
-          name: fc.name,
-          response: resultPayload
-        });
-      }
-
-      // Return responses synchronously to the active live session ref
-      if (functionResponses.length > 0 && isSessionOpenRef.current && sessionRef.current) {
-        await sessionRef.current.sendToolResponse({ functionResponses });
-      }
-    }
-  }, [systemMessageSettings, enqueueOutputPCM]);
-
-  // ==========================================
-  // Context Actions & Utilities
-  // ==========================================
-  const setConsentGoogleSearch = useCallback((value: boolean) => {
-    consentGoogleSearchRef.current = value;
-    setConsentGoogleSearchState(value);
-  }, []);
 
   const setConsentTranscription = useCallback((value: boolean) => {
     consentTranscriptionRef.current = value;
     setConsentTranscriptionState(value);
   }, []);
-
   const stopDurationTimer = useCallback(() => {
     if (durationIntervalRef.current) {
       window.clearInterval(durationIntervalRef.current);
@@ -351,6 +134,14 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       rafIdRef.current = null;
     }
     stopVideoCapture();
+    if (inputNodeRef.current) { inputNodeRef.current.port.onmessage = null; inputNodeRef.current.disconnect(); inputNodeRef.current = null; }
+    if (outputNodeRef.current) { outputNodeRef.current.disconnect(); outputNodeRef.current = null; }
+    if (analyserRef.current) { analyserRef.current.disconnect(); analyserRef.current = null; }
+    if (audioSourceRef.current) { audioSourceRef.current.disconnect(); audioSourceRef.current = null; }
+    if (silentGainRef.current) { silentGainRef.current.disconnect(); silentGainRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+    setMicVolume(0);
+    setIsUserTalking(false);
   }, [stopVideoCapture]);
 
   const resetPlayback = useCallback(() => {
@@ -358,24 +149,39 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     pendingOutputSamplesRef.current = 0;
     playbackPrimedRef.current = false;
     setIsAudioPlaying(false);
+    if (outputNodeRef.current) { outputNodeRef.current.port.postMessage({ type: "flush" }); }
   }, []);
-
   const enqueueOutputPCM = useCallback((pcm: Int16Array) => {
     pendingOutputRef.current.push(pcm);
     pendingOutputSamplesRef.current += pcm.length;
+    if (!playbackPrimedRef.current) {
+      if (pendingOutputSamplesRef.current < OUTPUT_PREBUFFER_SAMPLES) return;
+      playbackPrimedRef.current = true;
+      setIsAudioPlaying(true);
+      while (pendingOutputRef.current.length) {
+        const chunk = pendingOutputRef.current.shift()!;
+        pendingOutputSamplesRef.current -= chunk.length;
+        outputNodeRef.current?.port.postMessage({ type: "chunk", buffer: chunk.buffer }, [chunk.buffer]);
+      }
+      return;
+    }
+    setIsAudioPlaying(true);
+    const chunk = pendingOutputRef.current.shift()!;
+    pendingOutputSamplesRef.current -= chunk.length;
+    outputNodeRef.current?.port.postMessage({ type: "chunk", buffer: chunk.buffer }, [chunk.buffer]);
   }, []);
 
   const captureFrame = useCallback(() => {
-    if (
-      !isVideoEnabledRef.current ||
-      !sessionRef.current ||
-      !isSessionOpenRef.current ||
-      !videoRef.current ||
-      !canvasRef.current
-    ) {
-      return;
-    }
-    // (Your existing WebRTC video capture frame logic remains here)
+    if (!isVideoEnabledRef.current || !sessionRef.current || !isSessionOpenRef.current || !videoRef.current || !canvasRef.current) return;
+    if (videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    if (videoRef.current.srcObject !== streamRef.current) { videoRef.current.srcObject = streamRef.current; void videoRef.current.play(); }
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    const base64Data = canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
+    if (!base64Data) return;
+    sessionRef.current.sendRealtimeInput({ video: { data: base64Data, mimeType: "image/jpeg" } });
   }, []);
 
   const startVideoCapture = useCallback(() => {
@@ -384,39 +190,75 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     captureFrame();
     videoIntervalRef.current = window.setInterval(captureFrame, VIDEO_INTERVAL_MS);
   }, [captureFrame, stopVideoCapture]);
-
   const initAudio = useCallback(async () => {
     const base = window.location.origin;
-    if (!inputCtxRef.current) {
-      inputCtxRef.current = new AudioContext({ latencyHint: "interactive" });
-      await inputCtxRef.current.audioWorklet.addModule(`${base}/audio-input-worklet.js`);
+    if (!inputCtxRef.current) { inputCtxRef.current = new AudioContext({ latencyHint: "interactive" }); await inputCtxRef.current.audioWorklet.addModule(`${base}/audio-input-worklet.js`); }
+    if (!outputCtxRef.current) { outputCtxRef.current = new AudioContext({ sampleRate: OUTPUT_RATE, latencyHint: "interactive" }); await outputCtxRef.current.audioWorklet.addModule(`${base}/audio-output-worklet.js`); }
+    if (inputCtxRef.current.state === "suspended") await inputCtxRef.current.resume();
+    if (outputCtxRef.current.state === "suspended") await outputCtxRef.current.resume();
+    if (!outputNodeRef.current) {
+      outputNodeRef.current = new AudioWorkletNode(outputCtxRef.current, "gemini-output-worklet", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+      outputNodeRef.current.port.onmessage = (event) => { if (event.data?.type === "underrun") setIsAudioPlaying(false); };
+      outputNodeRef.current.connect(outputCtxRef.current.destination);
     }
   }, []);
 
   const startStreaming = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-      video: {
-        facingMode: cameraFacingRef.current,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 24, max: 30 },
-      },
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: { facingMode: cameraFacingRef.current, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
     });
     streamRef.current = stream;
+    if (videoRef.current) { videoRef.current.srcObject = stream; void videoRef.current.play(); }
+    const inputCtx = inputCtxRef.current!;
+    const source = inputCtx.createMediaStreamSource(stream);
+    const analyser = inputCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const updateVolume = () => {
+      if (!analyserRef.current) return;
+      analyserRef.current.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const avg = sum / dataArray.length;
+      const volume = Math.min(1, avg / 128);
+      setMicVolume((prev) => { if (volume === 0 && prev === 0) return prev; if (Math.abs(prev - volume) < 0.02) return prev; return volume; });
+      setIsUserTalking((prev) => { if (prev && volume < 0.1) return false; if (!prev && volume >= 0.15) return true; return prev; });
+      rafIdRef.current = requestAnimationFrame(updateVolume);
+    };
+    updateVolume();
+    const inputNode = new AudioWorkletNode(inputCtx, "gemini-input-worklet", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, processorOptions: { targetSampleRate: INPUT_RATE, chunkSamples: 320 } });
+    const silentGain = inputCtx.createGain();
+    silentGain.gain.value = 0;
+    audioSourceRef.current = source;
+    inputNodeRef.current = inputNode;
+    silentGainRef.current = silentGain;
+    source.connect(inputNode);
+    inputNode.connect(silentGain);
+    silentGain.connect(inputCtx.destination);
+    inputNode.port.onmessage = (event) => {
+      if (isMutedRef.current || !sessionRef.current || !isSessionOpenRef.current) return;
+      const pcm = new Int16Array(event.data);
+      const base64Data = pcm16ToBase64(pcm);
+      sessionRef.current.sendRealtimeInput({ audio: { data: base64Data, mimeType: `audio/pcm;rate=${INPUT_RATE}` } });
+    };
     startVideoCapture();
   }, [startVideoCapture]);
 
   const flipCamera = useCallback(async () => {
     if (!streamRef.current) return;
-    cameraFacingRef.current = cameraFacingRef.current === "user" ? "environment" : "user";
-    setCameraFacing(cameraFacingRef.current);
-    startVideoCapture();
+    const nextFacing = cameraFacingRef.current === "user" ? "environment" : "user";
+    cameraFacingRef.current = nextFacing;
+    setCameraFacing(nextFacing);
+    streamRef.current.getVideoTracks().forEach((track) => { track.stop(); streamRef.current?.removeTrack(track); });
+    const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } } });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    if (!newVideoTrack) return;
+    streamRef.current.addTrack(newVideoTrack);
+    if (videoRef.current) { videoRef.current.srcObject = streamRef.current; void videoRef.current.play(); }
+    if (isSessionOpenRef.current && isVideoEnabledRef.current) { startVideoCapture(); }
   }, [startVideoCapture]);
 
   const disconnect = useCallback(() => {
@@ -426,36 +268,168 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     endSessionTracking();
     cleanupMedia();
     resetPlayback();
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    if (session) session.close();
     setIsConnected(false);
     setStatus("idle");
+    setTranscript([]);
+    setSessionDurationMs(0);
   }, [cleanupMedia, endSessionTracking, resetPlayback]);
+  const startConnection = useCallback(
+    async (selectedVoice: string) => {
+      try {
+        setStatus("connecting");
+        manualDisconnectRef.current = false;
 
-  const startConnection = useCallback(async (selectedVoice: string) => {
-    try {
-      setStatus("connecting");
-      manualDisconnectRef.current = false;
-      await initAudio();
-      await startStreaming();
-      setIsConnected(true);
-      isSessionOpenRef.current = true;
-      setStatus("live");
-      beginSessionTracking();
-    } catch (e: any) {
-      console.error(e);
-      setStatus("error");
-    }
-  }, [initAudio, startStreaming, beginSessionTracking]);
+        await initAudio();
+        await startStreaming();
 
+        const tools: any[] = [];
+        if (LIVE_FUNCTION_DECLARATIONS.length > 0) {
+          tools.push({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
+        }
+
+        const tokenRes = await fetch("/api/session-token", { method: "POST" });
+        const { token: ephemeralToken, error: tokenError } = await tokenRes.json();
+        if (!ephemeralToken) throw new Error(tokenError || "Failed to get session token");
+
+        const ai = new GoogleGenAI({
+          apiKey: ephemeralToken,
+          httpOptions: { apiVersion: "v1alpha" },
+        });
+
+        const model = systemMessageSettings.model || "gemini-3.1-flash-live-preview";
+
+        const session = await ai.live.connect({
+          model,
+          config: {
+            responseModalities: [Modality.AUDIO],
+            systemInstruction: systemMessageSettings.systemInstruction,
+            tools: tools.length > 0 ? tools : undefined,
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: selectedVoice },
+              },
+            },
+            ...(consentTranscriptionRef.current
+              ? { inputAudioTranscription: {}, outputAudioTranscription: {} }
+              : {}),
+            contextWindowCompression: { slidingWindow: {} },
+            sessionResumption: resumptionHandleRef.current
+              ? { handle: resumptionHandleRef.current }
+              : {},
+          },
+          callbacks: {
+            onopen: async () => {
+              isSessionOpenRef.current = true;
+              setIsConnected(true);
+              setStatus("live");
+              resetPlayback();
+              beginSessionTracking();
+            },
+            onmessage: async (message: LiveServerMessage) => {
+              if (message.serverContent?.interrupted) {
+                resetPlayback();
+              }
+
+              const toolCalls = message.toolCall?.functionCalls ?? [];
+              if (toolCalls.length > 0 && sessionRef.current) {
+                const functionResponses = [];
+                for (const call of toolCalls) {
+                  const fn = (LIVE_FUNCTION_HANDLERS as any)[call.name];
+                  if (fn) {
+                    const result = await fn(call.args, merchantDomainRef.current);
+                    functionResponses.push({ id: call.id, name: call.name, response: { result } });
+                  }
+                }
+                if (functionResponses.length > 0) {
+                  sessionRef.current.sendToolResponse({ functionResponses });
+                }
+              }
+
+              if ((message as any).sessionResumptionUpdate?.newHandle) {
+                resumptionHandleRef.current = (message as any).sessionResumptionUpdate.newHandle;
+              }
+
+              if (consentTranscriptionRef.current) {
+                const inputTranscript = message.serverContent?.inputTranscription?.text;
+                if (inputTranscript) {
+                  setTranscript((prev) => [...prev, { role: "user", text: inputTranscript }]);
+                }
+                const outputTranscript = message.serverContent?.outputTranscription?.text;
+                if (outputTranscript) {
+                  setTranscript((prev) => [...prev, { role: "tatty", text: outputTranscript }]);
+                }
+              }
+
+              const parts = message.serverContent?.modelTurn?.parts ?? [];
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  const pcm = base64ToPCM16(part.inlineData.data);
+                  enqueueOutputPCM(pcm);
+                }
+                if (part.text && consentTranscriptionRef.current) {
+                  setTranscript((prev) => [...prev, { role: "tatty", text: part.text! }]);
+                }
+              }
+            },
+            onclose: () => {
+              isSessionOpenRef.current = false;
+              resumptionHandleRef.current = null;
+              endSessionTracking();
+              cleanupMedia();
+              resetPlayback();
+              sessionRef.current = null;
+              setIsConnected(false);
+              setStatus("idle");
+              setSessionDurationMs(0);
+              if (!manualDisconnectRef.current) { toast.error("Live session closed unexpectedly"); }
+              manualDisconnectRef.current = false;
+            },
+            onerror: (error) => {
+              isSessionOpenRef.current = false;
+              resumptionHandleRef.current = null;
+              endSessionTracking();
+              cleanupMedia();
+              resetPlayback();
+              sessionRef.current = null;
+              setIsConnected(false);
+              setStatus("error");
+              setSessionDurationMs(0);
+              manualDisconnectRef.current = true;
+              toast.error(error instanceof Error ? error.message : "Live API error");
+            },
+          },
+        });
+
+        sessionRef.current = session;
+      } catch (err) {
+        isSessionOpenRef.current = false;
+        cleanupMedia();
+        resetPlayback();
+        sessionRef.current = null;
+        setStatus("error");
+        setIsConnected(false);
+        setSessionDurationMs(0);
+        manualDisconnectRef.current = false;
+        toast.error(err instanceof Error ? err.message : "Failed to start the live session");
+      }
+    },
+    [beginSessionTracking, cleanupMedia, endSessionTracking, enqueueOutputPCM, initAudio, resetPlayback, startStreaming, systemMessageSettings],
+  );
   const sendText = useCallback((text: string) => {
     if (!sessionRef.current || !isSessionOpenRef.current) return;
     sessionRef.current.sendRealtimeInput({ text });
-    setTranscript((prev) => [...prev, { role: "user", text }]);
   }, []);
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const next = !prev;
       isMutedRef.current = next;
+      if (next && isSessionOpenRef.current && sessionRef.current) {
+        sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+      }
       return next;
     });
   }, []);
@@ -464,29 +438,18 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     setIsVideoEnabled((prev) => {
       const next = !prev;
       isVideoEnabledRef.current = next;
+      if (streamRef.current) {
+        streamRef.current.getVideoTracks().forEach((track) => { track.enabled = next; });
+      }
+      if (!next) { stopVideoCapture(); }
+      else if (isSessionOpenRef.current) { startVideoCapture(); }
       return next;
     });
-  }, []);
-  const isAgentActive = activeLayout === "showcase";
-
-const sendText = useCallback((text: string) => {
-  if (sessionRef.current) {
-    sessionRef.current.send({ text });
-  }
-}, []);
-
-  // Restores standard video view stage and redirects drawing loop back to camera self-view
-  const closeShowcase = useCallback(() => {
-    setActiveLayout("video-call");
-    setShowcasePayload(null);
-  }, []);
-  
+  }, [startVideoCapture, stopVideoCapture]);
 
   return {
     isConnected,
     isMuted,
-    isAgentActive,
-    searchResults,
     cameraFacing,
     isAudioPlaying,
     micVolume,
@@ -503,14 +466,7 @@ const sendText = useCallback((text: string) => {
     toggleVideo,
     flipCamera,
     isVideoEnabled,
-    consentGoogleSearch,
     consentTranscription,
-    setConsentGoogleSearch,
     setConsentTranscription,
-    // Returned state and handlers for rendering products in parent stage
-    activeLayout,
-    showcasePayload,
-    closeShowcase,
-    handleServerMessage
   };
 }

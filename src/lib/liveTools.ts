@@ -1,279 +1,289 @@
-import { types } from "@google/genai";
-
 // ---------------------------------------------------------------------------
-// 1. Strict UCP Schema Definitions (conforming to 2026 specs)
+// UCP agent profile + Gemini Live function declarations and MCP handlers
 // ---------------------------------------------------------------------------
 
-const UCP_META_SCHEMA = {
-  type: "OBJECT",
-  description: "Required UCP agent metadata.",
-  properties: {
-    "ucp-agent": {
-      type: "OBJECT",
-      description: "The UCP-compliant agent descriptor.",
-      properties: {
-        profile: {
-          type: "STRING",
-          description: "The verified, hosted URL to the agent's UCP Profile.",
+export const AGENT_PROFILE_URL = "https://ucp-agent-profile.tattty.dev";
+
+export const UCP_AGENT_PROFILE = {
+  ucp: {
+    version: "2026-04-08",
+    services: {
+      "dev.ucp.shopping": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/overview",
+          transport: "mcp",
+          schema: "https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json",
         },
-      },
-      required: ["profile"],
+      ],
+    },
+    capabilities: {
+      "dev.ucp.shopping.checkout": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/checkout",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/checkout.json",
+        },
+      ],
+      "dev.ucp.shopping.cart": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/cart",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/cart.json",
+        },
+      ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/catalog",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json",
+        },
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/catalog",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json",
+        },
+      ],
+      "dev.shopify.catalog": [
+        {
+          extends: [
+            "dev.ucp.shopping.catalog.search",
+            "dev.ucp.shopping.catalog.lookup",
+          ],
+          version: "2026-04-08",
+          spec: "https://shopify.dev/docs/agents/catalog/storefront-catalog-extension",
+          schema: "https://shopify.dev/ucp/schemas/2026-04-08/shopify_catalog.json",
+          requires: { protocol: { min: "2026-04-08" } },
+        },
+      ],
+      "dev.ucp.shopping.order": [
+        {
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/order",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/order.json",
+        },
+      ],
+      "dev.ucp.shopping.fulfillment": [
+        {
+          extends: "dev.ucp.shopping.checkout",
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/fulfillment",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/fulfillment.json",
+          config: {
+            allows_multi_destination: {
+              shipping: false,
+              pickup: false,
+            },
+            allows_method_combinations: [["shipping"], ["pickup"]],
+          },
+        },
+      ],
+      "dev.ucp.shopping.discount": [
+        {
+          extends: "dev.ucp.shopping.checkout",
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/discount",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/discount.json",
+        },
+      ],
+      "dev.ucp.shopping.buyer_consent": [
+        {
+          extends: "dev.ucp.shopping.checkout",
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/buyer-consent",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/buyer_consent.json",
+        },
+      ],
+      "dev.ucp.shopping.ap2_mandates": [
+        {
+          extends: "dev.ucp.shopping.checkout",
+          version: "2026-04-08",
+          spec: "https://ucp.dev/2026-04-08/specification/ap2-mandates",
+          schema: "https://ucp.dev/2026-04-08/schemas/shopping/ap2_mandate.json",
+        },
+      ],
+    },
+    payment_handlers: {
+      "dev.shopify.shop_pay": [
+        {
+          id: "shop_pay",
+          version: "2026-01-11",
+          spec: "https://shopify.dev/docs/agents/checkout/shop-pay-handler",
+          config_schema: "https://shopify.dev/ucp/shop-pay-handler/2026-01-11/config.json",
+          instrument_schemas: [
+            "https://shopify.dev/ucp/shop-pay-handler/2026-01-11/instrument.json",
+          ],
+        },
+      ],
+      "com.google.pay": [
+        {
+          id: "gpay",
+          version: "2026-01-11",
+          spec: "https://pay.google.com/gp/p/ucp/2026-01-11/",
+          config_schema: "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/config.json",
+          instrument_schemas: [
+            "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/card_payment_instrument.json",
+          ],
+        },
+      ],
     },
   },
-  required: ["ucp-agent"],
-};
+  signing_keys: [
+    {
+      kty: "EC",
+      x: "YvJFxrFpw3eilrAvZ6MqfCUQJ_kN9b4l-wPV4TqqI9M",
+      y: "bN2uLb3FJSo7xdaNG6ESxxchOXd0WquDM5GD7CP13mw",
+      crv: "P-256",
+      kid: "agent-1786437504041",
+      use: "sig",
+      alg: "ES256",
+    },
+  ],
+} as const;
+
+// ---------------------------------------------------------------------------
+// Gemini Live declarations for the UCP operations implemented by this agent
+// ---------------------------------------------------------------------------
 
 export const LIVE_FUNCTION_DECLARATIONS = [
   {
     name: "search_catalog",
-    description: "Search the store's product catalog in natural language based on buyer intent.",
+    description: "Search the store's product catalog using natural language.",
     parameters: {
       type: "OBJECT",
       properties: {
-        meta: UCP_META_SCHEMA,
-        catalog: {
+        query: {
+          type: "STRING",
+          description: "Free-text search query (e.g., 'wool runners').",
+        },
+        context: {
           type: "OBJECT",
+          description: "Buyer signals for relevance and localization.",
           properties: {
-            query: {
+            address_country: {
               type: "STRING",
-              description: "Free-text search query (e.g., 'wool runners').",
+              description: "ISO 3166-1 alpha-2 country code.",
             },
-            context: {
-              type: "OBJECT",
-              description: "Buyer signals for relevance and dynamic localization.",
-              properties: {
-                address_country: {
-                  type: "STRING",
-                  description: "ISO 3166-1 alpha-2 country code.",
-                },
-                currency: {
-                  type: "STRING",
-                  description: "Three-letter currency code (e.g., USD).",
-                },
-                intent: {
-                  type: "STRING",
-                  description: "Optional buyer preferences or qualitative intent clues.",
-                },
-              },
+            currency: {
+              type: "STRING",
+              description: "Three-letter currency code (e.g., USD).",
+            },
+            intent: {
+              type: "STRING",
+              description: "Buyer preferences or intent clues.",
             },
           },
-          required: ["query"],
         },
       },
-      required: ["meta", "catalog"],
+      required: ["query"],
     },
   },
   {
     name: "get_product",
-    description: "Retrieves complete product variant information, pricing, options, and stock details.",
+    description: "Get full product details, variants, pricing, and stock.",
     parameters: {
       type: "OBJECT",
       properties: {
-        meta: UCP_META_SCHEMA,
-        catalog: {
-          type: "OBJECT",
-          properties: {
-            id: {
-              type: "STRING",
-              description: "The unique global product or variant identifier (e.g., gid://shopify/Product/123).",
+        id: {
+          type: "STRING",
+          description: "Product or variant GID (e.g., gid://shopify/Product/123).",
+        },
+        selected: {
+          type: "ARRAY",
+          description: "Selected options to narrow variants.",
+          items: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "Option name (e.g., 'Color')." },
+              label: { type: "STRING", description: "Option value (e.g., 'Blue')." },
             },
-            selected: {
-              type: "ARRAY",
-              description: "Optional list of selected options used to narrow variants.",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  name: { type: "STRING", description: "Option name (e.g., 'Color')." },
-                  label: { type: "STRING", description: "Option value label (e.g., 'Blue')." },
-                },
-                required: ["name", "label"],
-              },
-            },
+            required: ["name", "label"],
           },
-          required: ["id"],
         },
       },
-      required: ["meta", "catalog"],
+      required: ["id"],
     },
   },
   {
     name: "create_checkout",
-    description: "Creates a secure checkout session with the merchant. Requires human verification on redirect.",
+    description: "Create a checkout session for the buyer.",
     parameters: {
       type: "OBJECT",
       properties: {
-        meta: UCP_META_SCHEMA,
-        checkout: {
-          type: "OBJECT",
-          properties: {
-            line_items: {
-              type: "ARRAY",
-              description: "Items to populate initially inside the buyer's checkout session.",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  variant_id: {
-                    type: "STRING",
-                    description: "Global variant ID to add.",
-                  },
-                  quantity: {
-                    type: "INTEGER",
-                    description: "Integer quantity to add.",
-                  },
-                },
-                required: ["variant_id", "quantity"],
+        line_items: {
+          type: "ARRAY",
+          description: "Items to add to checkout.",
+          items: {
+            type: "OBJECT",
+            properties: {
+              variant_id: {
+                type: "STRING",
+                description: "Global variant ID.",
+              },
+              quantity: {
+                type: "INTEGER",
+                description: "Quantity.",
               },
             },
+            required: ["variant_id", "quantity"],
           },
-          required: ["line_items"],
+        },
+        email: {
+          type: "STRING",
+          description: "Buyer email for order confirmation.",
         },
       },
-      required: ["meta", "checkout"],
+      required: ["line_items"],
     },
   },
-];
+] as const;
 
 // ---------------------------------------------------------------------------
-// 2. Real-World Dynamic UCP Handlers
+// UCP MCP handlers
 // ---------------------------------------------------------------------------
 
-export interface HandlerContext {
-  merchantDomain: string;
-  agentProfileUrl: string;
+type McpToolName = "search_catalog" | "get_product" | "create_checkout";
+
+async function mcpCall(
+  merchantDomain: string,
+  tool: McpToolName,
+  args: Record<string, unknown>,
+) {
+  const response = await fetch(`https://${merchantDomain}/api/ucp/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "UCP-Agent": `profile="${AGENT_PROFILE_URL}"`,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: tool,
+        arguments: {
+          meta: {
+            "ucp-agent": { profile: AGENT_PROFILE_URL },
+          },
+          ...args,
+        },
+      },
+      id: crypto.randomUUID(),
+    }),
+  });
+
+  const payload = await response.json();
+  return payload.result?.structuredContent ?? payload.result;
 }
 
 export const LIVE_FUNCTION_HANDLERS = {
-  /**
-   * Forwards a search_catalog call directly to the merchant's UCP/MCP endpoint.
-   */
-  search_catalog: async (args: any, context: HandlerContext): Promise<any> => {
-    const endpoint = `https://${context.merchantDomain}/api/ucp/mcp`;
-    
-    // Inject agent profile dynamically if missing from arguments
-    const payloadArgs = { ...args };
-    if (!payloadArgs.meta) {
-      payloadArgs.meta = {
-        "ucp-agent": {
-          profile: context.agentProfileUrl,
-        },
-      };
-    }
+  search_catalog: (args: Record<string, unknown>, merchantDomain: string) =>
+    mcpCall(merchantDomain, "search_catalog", { catalog: args }),
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "UCP-Agent": `profile="${context.agentProfileUrl}"`,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        params: {
-          name: "search_catalog",
-          arguments: payloadArgs,
-        },
-        id: Date.now(),
-      }),
-    });
+  get_product: (args: Record<string, unknown>, merchantDomain: string) =>
+    mcpCall(merchantDomain, "get_product", { catalog: args }),
 
-    if (!response.ok) {
-      throw new Error(`UCP Storefront catalog search failed with status ${response.status}`);
-    }
-
-    const jsonRpcResponse = await response.json();
-    if (jsonRpcResponse.error) {
-      throw new Error(`UCP Search Error: ${jsonRpcResponse.error.message}`);
-    }
-
-    // UCP over MCP returns output nested inside results.structuredContent
-    return jsonRpcResponse.result?.structuredContent || jsonRpcResponse.result;
-  },
-
-  /**
-   * Forwards a get_product call to extract detailed options and variants.
-   */
-  get_product: async (args: any, context: HandlerContext): Promise<any> => {
-    const endpoint = `https://${context.merchantDomain}/api/ucp/mcp`;
-    
-    const payloadArgs = { ...args };
-    if (!payloadArgs.meta) {
-      payloadArgs.meta = {
-        "ucp-agent": {
-          profile: context.agentProfileUrl,
-        },
-      };
-    }
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "UCP-Agent": `profile="${context.agentProfileUrl}"`,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        params: {
-          name: "get_product",
-          arguments: payloadArgs,
-        },
-        id: Date.now(),
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`UCP Storefront product retrieval failed with status ${response.status}`);
-    }
-
-    const jsonRpcResponse = await response.json();
-    if (jsonRpcResponse.error) {
-      throw new Error(`UCP Product Retrieval Error: ${jsonRpcResponse.error.message}`);
-    }
-
-    return jsonRpcResponse.result?.structuredContent || jsonRpcResponse.result;
-  },
-
-  /**
-   * Forwards create_checkout to generate continue_url payloads.
-   */
-  create_checkout: async (args: any, context: HandlerContext): Promise<any> => {
-    const endpoint = `https://${context.merchantDomain}/api/ucp/mcp`;
-    
-    const payloadArgs = { ...args };
-    if (!payloadArgs.meta) {
-      payloadArgs.meta = {
-        "ucp-agent": {
-          profile: context.agentProfileUrl,
-        },
-      };
-    }
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "UCP-Agent": `profile="${context.agentProfileUrl}"`,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        params: {
-          name: "create_checkout",
-          arguments: payloadArgs,
-        },
-        id: Date.now(),
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`UCP Storefront checkout creation failed with status ${response.status}`);
-    }
-
-    const jsonRpcResponse = await response.json();
-    if (jsonRpcResponse.error) {
-      throw new Error(`UCP Checkout Error: ${jsonRpcResponse.error.message}`);
-    }
-
-    return jsonRpcResponse.result?.structuredContent || jsonRpcResponse.result;
-  },
+  create_checkout: (args: Record<string, unknown>, merchantDomain: string) =>
+    mcpCall(merchantDomain, "create_checkout", { checkout: args }),
 };
