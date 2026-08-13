@@ -27,7 +27,21 @@ type LiveSystemMessageSettings = {
 };
 
 // Tools whose results should take over the screen (product / checkout views).
-const SCREEN_TOOLS = ["search_catalog", "get_product", "create_checkout"];
+const SCREEN_TOOLS = [
+  "search_catalog",
+  "lookup_catalog",
+  "get_product",
+  "create_cart",
+  "get_cart",
+  "update_cart",
+  "cancel_cart",
+  "create_checkout",
+  "get_checkout",
+  "update_checkout",
+  "complete_checkout",
+  "cancel_checkout",
+  "get_order",
+];
 
 type TranscriptItem = { role: "user" | "model"; text: string };
 
