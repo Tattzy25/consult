@@ -143,11 +143,13 @@ export default function App() {
   const openLauncher = () => {
     launcherIconRef.current?.startAnimation();
     setIsLauncherOpen(true);
+    window.parent.postMessage('FACETIME_OPEN', '*');
   };
 
   const closeLauncher = () => {
     if (isConnected) {
       disconnect();
+      window.parent.postMessage('FACETIME_CLOSE', '*');
     }
     setIsLauncherOpen(false);
   };
