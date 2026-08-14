@@ -5,20 +5,27 @@ import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-c
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
-import { buildAgentIntent } from './lib/agentStageEvents';
+import { buildAgentIntent, formatUIEvent } from './lib/agentStageEvents';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 
 function resolveMerchantDomain(): string {
   if (typeof window === 'undefined') return '';
   const params = new URLSearchParams(window.location.search);
-  const raw =
+  let raw =
     params.get('shop') ||
     params.get('merchant') ||
     params.get('store') ||
     '';
+  if (!raw) {
+    try {
+      const host = new URL(document.referrer).hostname;
+      if (host.endsWith('.myshopify.com')) raw = host;
+    } catch {
+      /* ignore */
+    }
+  }
   return raw.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
-
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
@@ -53,6 +60,9 @@ export default function App() {
       const d = e.data as { source?: string; type?: string; payload?: any } | null;
       if (!d || d.source !== 'ftai-widget') return;
       if (d.type === 'CLEAR') clearAgentView();
+      if (d.type === 'EVENT' && d.payload) {
+        sendText(formatUIEvent(d.payload));
+      }
       if (d.type === 'INTENT' && d.payload) {
         sendText(buildAgentIntent(d.payload.action as any, d.payload.product));
       }
@@ -75,10 +85,22 @@ export default function App() {
 
   useEffect(() => {
     if (!isConnected) return;
-    const mode = showProductStage ? 'SEARCH_RESULTS' : 'IDLE_LISTENING';
-    window.parent.postMessage({ source: 'ftai-embed', type: 'MODE_CHANGED', mode }, '*');
     if (showProductStage) {
-      window.parent.postMessage({ source: 'ftai-embed', type: 'RESULTS', payload: searchResults }, '*');
+      // Determine mode from payload shape
+      const p = searchResults;
+      let mode = 'CATALOG';
+      if (p.line_items && p.totals && !p.fulfillment?.methods) mode = 'CART';
+      if (p.line_items && p.fulfillment?.methods) mode = 'CHECKOUT';
+      if (p.status === 'completed' || p.order_id) mode = 'ORDER';
+      
+      window.parent.postMessage({ 
+        source: 'ftai-embed', 
+        type: 'SHEET_OPEN', 
+        mode,
+        payload: p 
+      }, '*');
+    } else {
+      window.parent.postMessage({ source: 'ftai-embed', type: 'SHEET_CLOSE' }, '*');
     }
   }, [showProductStage, isConnected, searchResults]);
 
@@ -151,7 +173,7 @@ export default function App() {
               autoPlay
               playsInline
               muted
-              className={cn('h-full w-full object-cover', cameraFacing === 'front' && '-scale-x-100')}
+              className={cn('h-full w-full object-cover', cameraFacing === 'user' && '-scale-x-100')}
             />
             <button
               type="button"

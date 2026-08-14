@@ -1,3 +1,23 @@
+// lib/agentStageEvents.ts
+
+export interface UIEvent {
+  tag: string;
+  [key: string]: any;
+}
+
+/**
+ * Formats a UI event from the Liquid widget into a strict JSON string.
+ * Gemini is instructed via system prompt to parse this and execute the 
+ * corresponding UCP tool call immediately.
+ */
+export function formatUIEvent(event: UIEvent): string {
+  return JSON.stringify({
+    source: 'ui_event',
+    ...event
+  });
+}
+
+// Legacy helpers kept for payload parsing in app.tsx
 export function getProductsFromPayload(payload: any) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.products)) return payload.products;
@@ -16,38 +36,7 @@ export function getPrimaryVariant(product: any) {
   return null;
 }
 
-function detectEntityType(item: any) {
-  if (Array.isArray(item?.variants)) return 'product';
-  if (Array.isArray(item?.line_items)) return 'checkout';
-  if (item?.status && Array.isArray(item?.totals)) return 'commerce_state';
-  if (item?.id) return 'entity';
-  return 'unknown';
-}
-
-function buildEntitySnapshot(item: any) {
-  const variant = getPrimaryVariant(item);
-
-  return {
-    id: item?.id ?? null,
-    title: item?.title ?? item?.name ?? null,
-    variant_id: variant?.id ?? item?.variant_id ?? null,
-    seller_domain: variant?.seller?.domain ?? item?.seller?.domain ?? null,
-    status: item?.status ?? null,
-    price_amount: variant?.price_range?.min?.amount ?? item?.price_range?.min?.amount ?? null,
-    price_currency: variant?.price_range?.min?.currency ?? item?.price_range?.min?.currency ?? item?.currency ?? null,
-  };
-}
-
-export function buildAgentIntent(action: string, item: any) {
-  const event = {
-    type: 'ui_event',
-    source: 'live_storefront_stage',
-    action,
-    entity_type: detectEntityType(item),
-    entity: buildEntitySnapshot(item),
-    instruction:
-      'Treat this as buyer intent from the rendered storefront UI. Use merchant tools only. Base the next action on current session state and tool data.',
-  };
-
-  return JSON.stringify(event);
+export function buildAgentIntent(action: string, product: any): string {
+  const productTitle = product?.title || 'the product';
+  return `The user wants to ${action} ${productTitle}. Please handle this request.`;
 }
