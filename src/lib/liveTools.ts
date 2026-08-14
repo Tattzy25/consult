@@ -1,3 +1,5 @@
+// lib/liveTools.ts
+
 import { Tool, Type } from '@google/genai';
 
 export const shoppingTools: Tool = {
@@ -183,4 +185,93 @@ export const shoppingTools: Tool = {
       }
     }
   ]
+};
+
+// Extract function declarations for Gemini Live API
+export const LIVE_FUNCTION_DECLARATIONS = shoppingTools.functionDeclarations || [];
+
+// UCP MCP Client - makes JSON-RPC calls to merchant's /api/ucp/mcp endpoint
+async function callUCPTool(
+  merchantDomain: string,
+  toolName: string,
+  args: any
+): Promise<any> {
+  if (!merchantDomain) {
+    throw new Error('Missing merchant domain for UCP MCP call');
+  }
+
+  const endpoint = `https://${merchantDomain}/api/ucp/mcp`;
+  
+  const requestBody = {
+    jsonrpc: '2.0',
+    id: Date.now(),
+    method: 'tools/call',
+    params: {
+      name: toolName,
+      arguments: {
+        meta: {
+          'ucp-agent': {
+            profile: 'https://agentic.facetimefy.com/.well-known/ucp'
+          }
+        },
+        ...args
+      }
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    throw new Error(`UCP MCP request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  
+  if (result.error) {
+    throw new Error(result.error.message || 'UCP MCP error');
+  }
+
+  // UCP MCP returns results in structuredContent for backward compatibility
+  if (result.result?.structuredContent) {
+    return result.result.structuredContent;
+  }
+  
+  return result.result;
+}
+
+// Tool handlers - map function names to actual UCP MCP calls
+export const LIVE_FUNCTION_HANDLERS: Record<string, (args: any, merchantDomain: string) => Promise<any>> = {
+  search_catalog: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'search_catalog', args);
+  },
+
+  get_product: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'get_product', args);
+  },
+
+  create_cart: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'create_cart', args);
+  },
+
+  update_cart: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'update_cart', args);
+  },
+
+  create_checkout: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'create_checkout', args);
+  },
+
+  update_checkout: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'update_checkout', args);
+  },
+
+  complete_checkout: async (args, merchantDomain) => {
+    return callUCPTool(merchantDomain, 'complete_checkout', args);
+  }
 };
