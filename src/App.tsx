@@ -233,15 +233,15 @@ export default function App() {
               <PhoneCallIcon ref={phoneIconRef} className="h-8 w-8 min-[750px]:h-10 min-[750px]:w-10" />
             </button>
           )}
-        </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleImageSelected}
-        />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageSelected}
+          />
+        </div>
       </footer>
 
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
