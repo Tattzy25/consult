@@ -1,19 +1,13 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { ImagePlus, PhoneOff } from 'lucide-react';
+import React, { useRef, useEffect } from 'react';
+import { SwitchCamera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
-import { CameraPreview } from './components/video/CameraPreview';
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { buildAgentIntent, getPrimaryVariant, getProductsFromPayload } from './lib/agentStageEvents';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 
-/**
- * Resolve the merchant this session belongs to from runtime URL state only.
- * Shopify embedded installs carry the store in the URL.
- */
 function resolveMerchantDomain(): string {
   if (typeof window === 'undefined') return '';
   const params = new URLSearchParams(window.location.search);
@@ -74,7 +68,6 @@ function renderTopLevelSummary(payload: any) {
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
-  const phoneIconRef = useRef<PhoneCallIconHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const merchantDomainRef = useRef<string>(resolveMerchantDomain());
   const merchantDomain = merchantDomainRef.current;
@@ -101,57 +94,39 @@ export default function App() {
     merchantDomain,
   });
 
-  // ── Cross-origin communication with parent Liquid widget ──
+  /* ── Receive commands from the Liquid pill ── */
   useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      const data = e.data;
-      if (typeof data !== 'object' || data.source !== 'ftai-widget') return;
-
-      if (data.type === 'START_CALL' && !isConnected) {
-        startConnection('Aoede');
-      }
-      if (data.type === 'END_CALL' && isConnected) {
-        disconnect();
-      }
-      if (data.type === 'SEND_IMAGE') {
-        fileInputRef.current?.click();
-      }
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string } | null;
+      if (!d || d.source !== 'ftai-widget') return;
+      if (d.type === 'START_CALL' && !isConnected && status !== 'connecting') startConnection('Aoede');
+      if (d.type === 'END_CALL' && isConnected) disconnect();
+      if (d.type === 'SEND_IMAGE') fileInputRef.current?.click();
     };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [isConnected, status, startConnection, disconnect]);
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [isConnected, startConnection, disconnect]);
-
-  // ── Broadcast state changes to parent ──
+  /* ── Broadcast call state (only on change) ── */
+  const prevConnected = useRef(isConnected);
   useEffect(() => {
-    if (isConnected) {
-      window.parent.postMessage({ source: 'ftai-embed', type: 'CALL_STARTED' }, '*');
-    } else {
-      window.parent.postMessage({ source: 'ftai-embed', type: 'CALL_ENDED' }, '*');
-    }
+    if (prevConnected.current === isConnected) return;
+    prevConnected.current = isConnected;
+    window.parent.postMessage(
+      { source: 'ftai-embed', type: isConnected ? 'CALL_STARTED' : 'CALL_ENDED' },
+      '*'
+    );
   }, [isConnected]);
 
-  // ── Broadcast mode changes for PIP switching ──
+  /* ── Broadcast PIP mode for the Liquid shell ── */
   const showProductStage = isConnected && isAgentActive && !!searchResults;
-  
   useEffect(() => {
     if (!isConnected) return;
-    
-    const mode = showProductStage ? 'SEARCH_RESULTS' : 'IDLE_LISTENING';
-    window.parent.postMessage({ 
-      source: 'ftai-embed', 
-      type: 'MODE_CHANGED', 
-      mode 
-    }, '*');
+    window.parent.postMessage(
+      { source: 'ftai-embed', type: 'MODE_CHANGED', mode: showProductStage ? 'SEARCH_RESULTS' : 'IDLE_LISTENING' },
+      '*'
+    );
   }, [showProductStage, isConnected]);
-
-  useEffect(() => {
-    if (status === 'connecting') {
-      phoneIconRef.current?.startAnimation();
-    } else {
-      phoneIconRef.current?.stopAnimation();
-    }
-  }, [status]);
 
   const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -180,13 +155,10 @@ export default function App() {
   const stageProducts = getProductsFromPayload(searchResults);
 
   return (
-    <div className="relative min-h-[100svh] overflow-hidden selection:bg-brand-primary/30 bg-black">
+    <div className="relative min-h-[100svh] overflow-hidden bg-black selection:bg-brand-primary/30">
       <ConnectingOverlay show={status === 'connecting'} />
 
-      <main
-        ref={stageRef}
-        className="flex h-full flex-1 flex-col overflow-hidden bg-black roast-gradient"
-      >
+      <main ref={stageRef} className="flex h-full flex-1 flex-col overflow-hidden bg-black roast-gradient">
         <AnimatePresence mode="wait">
           {showProductStage ? (
             <motion.div
@@ -196,7 +168,7 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-10"
             >
-              <div className="absolute inset-0 overflow-y-auto px-4 pt-20 pb-32 min-[750px]:px-6">
+              <div className="absolute inset-0 overflow-y-auto px-4 pt-10 pb-16 min-[750px]:px-6">
                 <div className="mx-auto max-w-7xl space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
@@ -284,8 +256,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Orb moves to PIP when showing results */}
-              <div className="absolute bottom-28 right-4 z-30 aspect-[9/16] w-24 overflow-hidden rounded-2xl border-2 border-zinc-800 bg-zinc-900 shadow-2xl group min-[750px]:w-28 lg:w-36">
+              {/* Orb drops into PIP while products are on stage */}
+              <div className="absolute bottom-4 right-3 z-30 aspect-[9/16] w-20 overflow-hidden rounded-2xl border-2 border-zinc-800 bg-zinc-900 shadow-2xl group min-[750px]:w-28 lg:w-32">
                 <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
                 <button
                   onClick={clearAgentView}
@@ -305,84 +277,50 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="absolute inset-0"
             >
-              {/* Orb full screen during idle/listening */}
+              {/* Orb full screen */}
               <div className="absolute inset-0 pointer-events-none z-0">
                 <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
               </div>
 
-              {/* User camera in PIP */}
+              {/* Responsive user-camera PIP — always fully inside the panel */}
               <div
-                className="absolute inset-0 z-10 pointer-events-none"
-                style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
+                className="absolute right-3 top-3 z-20 w-24 min-[480px]:w-28 min-[750px]:w-36 aspect-[3/4] overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl"
+                style={{
+                  opacity: isConnected ? 1 : 0,
+                  transition: 'opacity 0.3s',
+                  pointerEvents: isConnected ? 'auto' : 'none',
+                }}
               >
-                <CameraPreview
-                  videoRef={videoRef}
-                  cameraFacing={cameraFacing}
-                  stageRef={stageRef}
-                  onFlip={flipCamera}
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={cn('h-full w-full object-cover', cameraFacing === 'front' && '-scale-x-100')}
                 />
+                <button
+                  type="button"
+                  onClick={flipCamera}
+                  className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 p-1.5 text-white/90 transition hover:bg-black/70"
+                  aria-label="Flip camera"
+                  title="Flip camera"
+                >
+                  <SwitchCamera size={14} />
+                </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-
       </main>
 
-      <footer
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4 min-[750px]:px-6"
-        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-      >
-        <div className="pointer-events-auto flex min-h-[68px] min-w-[220px] items-center justify-center gap-5 rounded-full border border-white/10 bg-zinc-950/88 px-5 py-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl min-[325px]:w-[min(92vw,340px)] min-[750px]:w-auto min-[750px]:gap-8 min-[750px]:px-7">
-          {isConnected ? (
-            <>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex h-11 w-11 items-center justify-center rounded-full text-white/80 transition hover:bg-white/5 hover:text-white active:scale-90"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                aria-label="Share a photo of a product"
-                title="Share a photo of a product"
-              >
-                <ImagePlus size={24} />
-              </button>
-
-              <button
-                type="button"
-                onClick={disconnect}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/12 text-red-500 transition hover:bg-red-500/18 active:scale-90"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                aria-label="End call"
-              >
-                <PhoneOff size={24} className="text-red-500" />
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => startConnection('Aoede')}
-              disabled={status === 'connecting'}
-              className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-full text-green-400 transition-all touch-manipulation active:scale-95',
-                status === 'connecting'
-                  ? 'cursor-not-allowed opacity-50'
-                  : 'hover:bg-white/5 hover:text-green-300',
-              )}
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-              aria-label="Start call"
-            >
-              <PhoneCallIcon ref={phoneIconRef} className="h-8 w-8 min-[750px]:h-10 min-[750px]:w-10" />
-            </button>
-          )}
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleImageSelected}
-        />
-      </footer>
+      {/* Hidden file input — triggered by the pill's image button */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageSelected}
+      />
 
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
     </div>
