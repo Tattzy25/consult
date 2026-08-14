@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
-import { SwitchCamera } from 'lucide-react';
+import { ImagePlus, PhoneOff, SwitchCamera } from 'lucide-react';
 import { cn } from './lib/utils';
+import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
@@ -20,6 +21,7 @@ function resolveMerchantDomain(): string {
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
+  const phoneIconRef = useRef<PhoneCallIconHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const merchantDomainRef = useRef<string>(resolveMerchantDomain());
   const merchantDomain = merchantDomainRef.current;
@@ -50,9 +52,6 @@ export default function App() {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; payload?: any } | null;
       if (!d || d.source !== 'ftai-widget') return;
-      if (d.type === 'START_CALL' && !isConnected && status !== 'connecting') startConnection('Aoede');
-      if (d.type === 'END_CALL' && isConnected) disconnect();
-      if (d.type === 'SEND_IMAGE') fileInputRef.current?.click();
       if (d.type === 'CLEAR') clearAgentView();
       if (d.type === 'INTENT' && d.payload) {
         sendText(buildAgentIntent(d.payload.action as any, d.payload.product));
@@ -60,7 +59,7 @@ export default function App() {
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [isConnected, status, startConnection, disconnect, clearAgentView, sendText]);
+  }, [clearAgentView, sendText]);
 
   const prevConnected = useRef(isConnected);
   useEffect(() => {
@@ -82,6 +81,14 @@ export default function App() {
       window.parent.postMessage({ source: 'ftai-embed', type: 'RESULTS', payload: searchResults }, '*');
     }
   }, [showProductStage, isConnected, searchResults]);
+
+  useEffect(() => {
+    if (status === 'connecting') {
+      phoneIconRef.current?.startAnimation();
+    } else {
+      phoneIconRef.current?.stopAnimation();
+    }
+  }, [status]);
 
   const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -138,7 +145,7 @@ export default function App() {
           className="absolute inset-0 z-10 pointer-events-none"
           style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
         >
-          <div className="absolute right-3 top-3 z-20 w-24 min-[480px]:w-28 min-[750px]:w-36 aspect-[3/4] overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl">
+          <div className="absolute right-8 top-8 z-20 w-24 min-[480px]:w-28 min-[750px]:w-36 aspect-[3/4] overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl">
             <video
               ref={videoRef}
               autoPlay
@@ -159,13 +166,61 @@ export default function App() {
         </div>
       </main>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleImageSelected}
-      />
+      <footer
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4 min-[750px]:px-6"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="pointer-events-auto flex min-h-[68px] min-w-[220px] items-center justify-center gap-5 rounded-full border border-white/10 bg-zinc-950/88 px-5 py-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl min-[325px]:w-[min(92vw,340px)] min-[750px]:w-auto min-[750px]:gap-8 min-[750px]:px-7">
+          {isConnected ? (
+            <>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-white/80 transition hover:bg-white/5 hover:text-white active:scale-90"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                aria-label="Share a photo of a product"
+                title="Share a photo of a product"
+              >
+                <ImagePlus size={24} />
+              </button>
+
+              <button
+                type="button"
+                onClick={disconnect}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/12 text-red-500 transition hover:bg-red-500/18 active:scale-90"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                aria-label="End call"
+              >
+                <PhoneOff size={24} className="text-red-500" />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startConnection('Aoede')}
+              disabled={status === 'connecting'}
+              className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-full text-green-400 transition-all touch-manipulation active:scale-95',
+                status === 'connecting'
+                  ? 'cursor-not-allowed opacity-50'
+                  : 'hover:bg-white/5 hover:text-green-300',
+              )}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              aria-label="Start call"
+            >
+              <PhoneCallIcon ref={phoneIconRef} className="h-8 w-8 min-[750px]:h-10 min-[750px]:w-10" />
+            </button>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageSelected}
+        />
+      </footer>
 
       <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
     </div>
