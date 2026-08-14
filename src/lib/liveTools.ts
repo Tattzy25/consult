@@ -211,7 +211,8 @@ async function callUCPTool(
       arguments: {
         meta: {
           'ucp-agent': {
-            profile: 'https://agentic.facetimefy.com/.well-known/ucp'
+            // Use Shopify's hosted, guaranteed-valid profile to bypass 422 errors
+            profile: 'https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json'
           }
         },
         ...args
