@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, PhoneOff } from 'lucide-react';
+import { PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
@@ -15,7 +15,6 @@ export default function App() {
 
   const {
     isConnected,
-    isMuted,
     cameraFacing,
     isAudioPlaying,
     micVolume,
@@ -25,7 +24,6 @@ export default function App() {
     canvasRef,
     startConnection,
     disconnect,
-    toggleMute,
     flipCamera,
   } = useGeminiLive(SYSTEM_MESSAGE_SETTINGS);
 
@@ -56,7 +54,7 @@ export default function App() {
           ref={stageRef}
           className="flex-1 relative bg-black flex roast-gradient min-h-[100svh]"
         >
-         <div className="absolute inset-y-0 left-0 w-1/2 pointer-events-none z-0">
+         <div className="absolute inset-y-0 left-0 w-1/3 -translate-y-[12%] pointer-events-none z-0">
          <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
          </div>
 
@@ -80,64 +78,50 @@ export default function App() {
             />
           </div>
 
-          {/* Phone button (pre-call) / Dock (in-call) */}
-          <AnimatePresence mode="wait">
-            {!isConnected ? (
-              <motion.div
-                key="disconnected-screen"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center gap-4"
-              >
-                <button
-                  type="button"
-                  onClick={() => startConnection("Aoede")}
-                  disabled={status === "connecting"}
-                  className={cn(
-                    "relative flex items-center justify-center p-4 text-green-400",
-                    "active:scale-95 transition-all duration-300 touch-manipulation",
-                    status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-110 hover:text-green-300"
-                  )}
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <PhoneCallIcon
-                    ref={phoneIconRef}
-                    className="w-12 h-12 md:w-16 md:h-16"
-                  />
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="connected-screen"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
-                style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
-              >
-                <div className="flex items-center justify-center gap-8 pointer-events-auto">
-                  <button
-                    type="button"
-                    onClick={toggleMute}
-                    className="text-white/80 hover:text-white active:scale-90 transition-all touch-manipulation"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    {isMuted ? <MicOff size={26} className="text-red-400" /> : <Mic size={26} />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    className="active:scale-90 transition-all touch-manipulation"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <PhoneOff size={32} className="text-red-500" />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                    {/* Footer — call / end call, bottom center */}
+          <footer
+  className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4"
+  style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+>
+  <div className="pointer-events-auto flex min-h-[68px] min-w-[220px] items-center justify-center rounded-full border border-white/10 bg-zinc-950/80 px-8 py-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+    <AnimatePresence mode="wait" initial={false}>
+      {!isConnected ? (
+        <motion.button
+          key="call"
+          type="button"
+          onClick={() => startConnection("Aoede")}
+          disabled={status === "connecting"}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className={cn(
+            "relative flex h-12 w-12 items-center justify-center text-green-400",
+            "active:scale-95 transition-all duration-300 touch-manipulation",
+            status === "connecting" ? "opacity-50 cursor-not-allowed" : "hover:scale-110 hover:text-green-300"
+          )}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+          aria-label="Start call"
+        >
+          <PhoneCallIcon ref={phoneIconRef} className="h-8 w-8" />
+        </motion.button>
+      ) : (
+        <motion.button
+          key="end"
+          type="button"
+          onClick={disconnect}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 active:scale-90 transition-all touch-manipulation"
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+          aria-label="End call"
+        >
+          <PhoneOff size={24} className="text-red-500" />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  </div>
+</footer>
         </div>
       </main>
 

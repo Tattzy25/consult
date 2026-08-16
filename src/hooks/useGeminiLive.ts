@@ -64,7 +64,6 @@ function base64ToPCM16(base64: string): Int16Array {
 
 export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) {
   const [isConnected, setIsConnected] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -77,7 +76,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isAgentActive, setIsAgentActive] = useState(false);
 
-  const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
   const cameraFacingRef = useRef<"user" | "environment">("user");
   const isSessionOpenRef = useRef(false);
@@ -262,7 +260,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     inputNode.connect(silentGain);
     silentGain.connect(inputCtx.destination);
     inputNode.port.onmessage = (event) => {
-      if (isMutedRef.current || !sessionRef.current || !isSessionOpenRef.current) return;
       const pcm = new Int16Array(event.data);
       const base64Data = pcm16ToBase64(pcm);
       sessionRef.current.sendRealtimeInput({ audio: { data: base64Data, mimeType: `audio/pcm;rate=${INPUT_RATE}` } });
@@ -494,17 +491,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     });
   }, []);
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      isMutedRef.current = next;
-      if (next && isSessionOpenRef.current && sessionRef.current) {
-        sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
-      }
-      return next;
-    });
-  }, []);
-
   const toggleVideo = useCallback(() => {
     setIsVideoEnabled((prev) => {
       const next = !prev;
@@ -520,7 +506,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
   return {
     isConnected,
-    isMuted,
     cameraFacing,
     isAudioPlaying,
     micVolume,
@@ -534,7 +519,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     disconnect,
     sendText,
     sendImage,
-    toggleMute,
     toggleVideo,
     flipCamera,
     isVideoEnabled,
