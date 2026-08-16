@@ -1,5 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion'; // ONLY for positional movement
+import React, { useRef, useEffect } from 'react';
 import { ImagePlus, PhoneOff, SwitchCamera } from 'lucide-react';
 import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
@@ -9,7 +8,7 @@ import { useGeminiLive } from './hooks/useGeminiLive';
 import { buildAgentIntent, formatUIEvent } from './lib/agentStageEvents';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
 
-import { toast } from "sonner";
+import { toast } from "sonner"; // Ensure sonner is imported
 
 function resolveMerchantDomain(): string {
   if (typeof window === 'undefined') throw new Error("Window undefined");
@@ -29,11 +28,10 @@ function resolveMerchantDomain(): string {
   if (!domain) {
     const err = "CRITICAL: No Merchant Domain found. UCP calls will fail.";
     toast.error(err);
-    throw new Error(err);
+    throw new Error(err); // Fail loud immediately
   }
   return domain;
 }
-
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
@@ -62,10 +60,6 @@ export default function App() {
     ...SYSTEM_MESSAGE_SETTINGS,
     merchantDomain,
   });
-
-  // --- LOGIC: Detection for positioning ---
-  const isBrowsing = isConnected && isAgentActive && !!searchResults;
-  const spring = { type: "spring", stiffness: 260, damping: 25 };
 
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
@@ -98,6 +92,7 @@ export default function App() {
   useEffect(() => {
     if (!isConnected) return;
     if (showProductStage) {
+      // Determine mode from payload shape
       const p = searchResults;
       let mode = 'CATALOG';
       if (p.line_items && p.totals && !p.fulfillment?.methods) mode = 'CART';
@@ -184,53 +179,15 @@ export default function App() {
       <ConnectingOverlay show={status === 'connecting'} />
 
       <main ref={stageRef} className="flex h-full flex-1 flex-col overflow-hidden bg-black roast-gradient">
-        
-        {/* 1. ORB CONTAINER: Shifts X position based on browsing state */}
-        <motion.div 
-          className="absolute inset-0 pointer-events-none z-0"
-          animate={{ x: isBrowsing ? "-25%" : "0%" }}
-          transition={spring}
-        >
+        <div className="absolute inset-0 pointer-events-none z-0">
           <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
-        </motion.div>
+        </div>
 
-        {/* 2. PRODUCT GRID: Centered and appears when results exist */}
-        <AnimatePresence>
-          {isBrowsing && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={spring}
-              className="absolute inset-0 z-20 flex items-center justify-center px-6"
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-7xl">
-                {(Array.isArray(searchResults) ? searchResults : [searchResults]).map((p: any) => (
-                  <div key={p.id} className="bg-zinc-900/40 border border-white/10 rounded-2xl p-4 backdrop-blur-sm">
-                    <p className="text-white font-semibold">{p.name}</p>
-                    <p className="text-zinc-400 text-sm">{p.price ? `${p.currency}${p.price}` : ''}</p>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 3. PIP WINDOW: Draggable and shifts position */}
-        <motion.div
-          layout
-          drag
-          dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-          dragElastic={0.1}
-          transition={spring}
-          className={cn(
-            "absolute z-30 pointer-events-auto",
-            isBrowsing 
-              ? "top-8 right-8 w-24 sm:w-32 aspect-[3/4]" // Corner when browsing
-              : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64" // Center when talking
-          )}
+        <div
+          className="absolute inset-0 z-10 pointer-events-none"
+          style={{ opacity: isConnected ? 1 : 0, transition: 'opacity 0.3s' }}
         >
-          <div className="relative w-full h-full overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl">
+          <div className="absolute right-8 top-8 z-20 w-24 min-[480px]:w-28 min-[750px]:w-36 aspect-[3/4] overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl">
             <video
               ref={videoRef}
               autoPlay
@@ -248,7 +205,7 @@ export default function App() {
               <SwitchCamera size={14} />
             </button>
           </div>
-        </motion.div>
+        </div>
       </main>
 
       <footer
