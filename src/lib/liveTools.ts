@@ -234,15 +234,15 @@ async function callUCPTool(
   const result = await response.json();
   
   if (result.error) {
-    throw new Error(result.error.message || 'UCP MCP error');
+    throw new Error(`UCP MCP Error: ${result.error.message || 'Unknown'}`);
   }
 
-  // UCP MCP returns results in structuredContent for backward compatibility
-  if (result.result?.structuredContent) {
-    return result.result.structuredContent;
+  // STRICT: UCP MCP MUST return structuredContent. If not, the shape is wrong.
+  if (!result.result?.structuredContent) {
+    throw new Error(`UCP Response Malformed: Missing 'structuredContent'. Raw: ${JSON.stringify(result.result).slice(0, 100)}`);
   }
   
-  return result.result;
+  return result.result.structuredContent;
 }
 
 // Tool handlers - map function names to actual UCP MCP calls
